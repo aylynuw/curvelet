@@ -942,3 +942,23 @@ textarea.input { resize: vertical; line-height: 1.5; }
 .poi__mark { flex: none; width: 28px; height: 28px; }
 .graph__tools button { display: inline-flex; align-items: center; gap: var(--space-2xs); }
 @media (max-width: 640px) { .graph__tools button span { display: none; } }
+
+/* ---- phones: the graph's options fold behind one button; the keypad shows while typing */
+.hud__more { display: contents; }
+.hud__more-toggle { display: none; }
+@media (max-width: 40rem) {
+  .hud__more-toggle { display: inline-flex; }
+  .hud__more { display: none; }
+  .hud__more[data-open] { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-xs); flex-basis: 100%; }
+}
+@media (max-width: 59.99rem) {
+  /* the keypad takes half a phone's height: it shows only while a line (or the practice answer) is being typed */
+  .app:not(:has(math-field:focus, .keypad-dock:active, .keypad-dock :focus)) .keypad-dock { display: none; }
+  /* geometry: tools scroll on one row, the actions below them; the hint sits above the board, not on it */
+  .geo__tools { flex-wrap: wrap; overflow: visible; }
+  .geo__tools > .geo__group:first-child { flex: 1 1 100%; overflow-x: auto; scrollbar-width: none; }
+  .geo__tools-end { flex: 1 1 100%; margin-left: 0; justify-content: flex-end; flex-wrap: wrap; }
+  .geo__stage { display: flex; flex-direction: column; }
+  .geo__hint { position: static; flex: none; max-width: none; border-radius: 0; box-shadow: none; border-bottom: var(--rule-hair) solid var(--color-rule-2); font-size: var(--text-xs); }
+  .geo__svg { flex: 1; min-height: 0; }
+}

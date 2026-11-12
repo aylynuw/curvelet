@@ -18,3 +18,21 @@ describe('graph shape handles', () => {
     expect(textToLatex('bezier((1, 2), (3, 4))')).toBe('\\operatorname{bezier}(\\left(1,2\\right),\\left(3,4\\right))');
   });
 });
+
+import { exactCrossing, primOfShape } from '../src/graph/handles';
+describe('exact crossings', () => {
+  const near = (p: { x: number; y: number } | null, x: number, y: number) => {
+    expect(p).not.toBeNull();
+    expect(p!.x).toBeCloseTo(x, 12);
+    expect(p!.y).toBeCloseTo(y, 12);
+  };
+  it('a polygon side and a line', () => {
+    const side = primOfShape({ type: 'polygon', pts: [{ x: 0, y: 0 }, { x: 4, y: 0 }, { x: 2, y: 3 }] }, { x: 3.1, y: 1.4 })!;
+    // y = x/2 meets the side (4,0)-(2,3) at x = 3
+    near(exactCrossing(side, { kind: 'fn', f: (x) => x / 2 }, { x: 3.01, y: 1.49 }, 0.1), 3, 1.5);
+  });
+  it('a line and a circle, and two circles', () => {
+    near(exactCrossing({ kind: 'line', a: { x: -5, y: 0 }, b: { x: 5, y: 0 } }, { kind: 'circle', c: { x: 0, y: 0 }, r: 2 }, { x: 1.98, y: 0.01 }, 0.1), 2, 0);
+    near(exactCrossing({ kind: 'circle', c: { x: 0, y: 0 }, r: 5 }, { kind: 'circle', c: { x: 8, y: 0 }, r: 5 }, { x: 4.01, y: 2.98 }, 0.1), 4, 3);
+  });
+});

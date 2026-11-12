@@ -24,7 +24,7 @@ function rectPath(rects: number[]): string {
 const BASELINE = { top: 'hanging', middle: 'central', bottom: 'alphabetic' } as const;
 
 /** A scene as a standalone SVG document (for export and exam figures). */
-export function sceneToSvg(scene: Scene, theme: DrawTheme): string {
+export function sceneToSvg(scene: Scene, theme: DrawTheme, underlay = ''): string {
   const exam = scene.style === 'exam';
   const color = (series: number) => theme.curves[series % theme.curves.length]!;
   const out: string[] = [];
@@ -32,6 +32,8 @@ export function sceneToSvg(scene: Scene, theme: DrawTheme): string {
     `<svg xmlns="http://www.w3.org/2000/svg" width="${scene.width}" height="${scene.height}" viewBox="0 0 ${scene.width} ${scene.height}" font-family="${esc(theme.font)}" font-size="${theme.fontSize}">`,
   );
   if (theme.background) out.push(`<rect width="100%" height="100%" fill="${theme.background}"/>`);
+  // the caller's pictures, under the grid and curves
+  if (underlay) out.push(underlay);
   if (scene.gridMinor.length) out.push(`<path d="${segPath(scene.gridMinor)}" stroke="${theme.gridMinor}" stroke-width="1" fill="none"/>`);
   if (scene.gridMajor.length) out.push(`<path d="${segPath(scene.gridMajor)}" stroke="${theme.gridMajor}" stroke-width="1" fill="none"/>`);
 

@@ -93,3 +93,91 @@ export function crossingsWith(mine: number[], others: number[], limit = 60): { x
   }
   return out;
 }
+
+type P = { x: number; y: number };
+/** what a curve is, near a crossing, for finding that crossing exactly */
+export type Prim = { kind: 'fn'; f: (x: number) => number } | { kind: 'line'; a: P; b: P } | { kind: 'circle'; c: P; r: number };
+
+/** the straight piece or circle of a shape nearest to `p` (a polygon's nearest side) */
+export function primOfShape(shape: { type: string; a?: P; b?: P; c?: P; r?: number; pts?: P[] }, p: P): Prim | null {
+  if (shape.type === 'circle' && shape.c && shape.r !== undefined) return { kind: 'circle', c: shape.c, r: shape.r };
+  if (shape.a && shape.b) return { kind: 'line', a: shape.a, b: shape.b };
+  if (shape.type === 'polygon' && shape.pts && shape.pts.length > 1) {
+    let best: Prim | null = null;
+    let bestD = Infinity;
+    shape.pts.forEach((a, k) => {
+      const b = shape.pts![(k + 1) % shape.pts!.length]!;
+      const d = distToSegment(p, a, b);
+      if (d < bestD) [best, bestD] = [{ kind: 'line', a, b }, d];
+    });
+    return best;
+  }
+  return null;
+}
+function distToSegment(p: P, a: P, b: P) {
+  const [dx, dy] = [b.x - a.x, b.y - a.y];
+  const l = dx * dx + dy * dy;
+  const t = l ? Math.max(0, Math.min(1, ((p.x - a.x) * dx + (p.y - a.y) * dy) / l)) : 0;
+  return Math.hypot(p.x - a.x - t * dx, p.y - a.y - t * dy);
+}
+const nearest = (pts: P[], p: P) => pts.reduce<P | null>((best, q) => (!best || Math.hypot(q.x - p.x, q.y - p.y) < Math.hypot(best.x - p.x, best.y - p.y) ? q : best), null);
+
+/** the crossing of two curves near `p`, worked out exactly (or null to keep the approximate one) */
+export function exactCrossing(u: Prim, v: Prim, p: P, span: number): P | null {
+  if (u.kind === 'fn' && v.kind !== 'fn') return exactCrossing(v, u, p, span);
+  if (u.kind === 'circle' && v.kind === 'line') return exactCrossing(v, u, p, span);
+  if (u.kind === 'line' && v.kind === 'line') {
+    const [d1x, d1y, d2x, d2y] = [u.b.x - u.a.x, u.b.y - u.a.y, v.b.x - v.a.x, v.b.y - v.a.y];
+    const den = d1x * d2y - d1y * d2x;
+    if (Math.abs(den) < 1e-12) return null;
+    const t = ((v.a.x - u.a.x) * d2y - (v.a.y - u.a.y) * d2x) / den;
+    return { x: u.a.x + t * d1x, y: u.a.y + t * d1y };
+  }
+  if (u.kind === 'line' && v.kind === 'circle') {
+    const [dx, dy] = [u.b.x - u.a.x, u.b.y - u.a.y];
+    const [fx, fy] = [u.a.x - v.c.x, u.a.y - v.c.y];
+    const A = dx * dx + dy * dy;
+    const B = 2 * (fx * dx + fy * dy);
+    const C = fx * fx + fy * fy - v.r * v.r;
+    const disc = B * B - 4 * A * C;
+    if (!A || disc < 0) return null;
+    const s = Math.sqrt(disc);
+    return nearest([(-B - s) / (2 * A), (-B + s) / (2 * A)].map((t) => ({ x: u.a.x + t * dx, y: u.a.y + t * dy })), p);
+  }
+  if (u.kind === 'circle' && v.kind === 'circle') {
+    const d = Math.hypot(v.c.x - u.c.x, v.c.y - u.c.y);
+    if (!d || d > u.r + v.r || d < Math.abs(u.r - v.r)) return null;
+    const a = (u.r * u.r - v.r * v.r + d * d) / (2 * d);
+    const h = Math.sqrt(Math.max(0, u.r * u.r - a * a));
+    const [mx, my] = [u.c.x + (a * (v.c.x - u.c.x)) / d, u.c.y + (a * (v.c.y - u.c.y)) / d];
+    const [ox, oy] = [(-(v.c.y - u.c.y) * h) / d, ((v.c.x - u.c.x) * h) / d];
+    return nearest([{ x: mx + ox, y: my + oy }, { x: mx - ox, y: my - oy }], p);
+  }
+  // a curve y = f(x) against a line or another curve: halve the gap where they change sides
+  if (v.kind === 'fn') {
+    const f = v.f;
+    let g: ((x: number) => number) | null = null;
+    if (u.kind === 'fn') g = u.f;
+    else if (u.kind === 'line') {
+      const dx = u.b.x - u.a.x;
+      if (Math.abs(dx) < 1e-12) {
+        const y = f(u.a.x);
+        return Number.isFinite(y) ? { x: u.a.x, y } : null;
+      }
+      const m = (u.b.y - u.a.y) / dx;
+      g = (x) => u.a.y + m * (x - u.a.x);
+    }
+    if (!g) return null;
+    const h = (x: number) => f(x) - g!(x);
+    let [lo, hi] = [p.x - span, p.x + span];
+    if (!(Math.sign(h(lo)) * Math.sign(h(hi)) < 0)) return null;
+    for (let k = 0; k < 60; k++) {
+      const m = (lo + hi) / 2;
+      if (Math.sign(h(m)) === Math.sign(h(lo))) lo = m;
+      else hi = m;
+    }
+    const x = (lo + hi) / 2;
+    return { x, y: f(x) };
+  }
+  return null;
+}

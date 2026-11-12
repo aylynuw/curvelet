@@ -85,8 +85,8 @@ function ResultViewInner({
   form = 'exact',
   literal,
 }: {
-  /** the line is a number as typed (let a = -1.1): shown as typed */
-  literal?: boolean;
+  /** the line is only numbers as typed: a number (a = -1.1) stays as typed; a point shows only its fractions, when they differ */
+  literal?: 'number' | 'point';
   form?: NumberForm;
   result: Result | undefined;
   t: Strings;
@@ -137,7 +137,15 @@ function ResultViewInner({
       }
       // exact view: decimals that are fractions read as fractions, (2.2, 4.048) → (11/5, 506/125)
       const plain = formatValue(v);
-      const asFractions = form === 'exact' && !literal && !result.numeric && (v.kind === 'num' || v.kind === 'point') ? fractionsIn(plain) : plain;
+      const asFractions = form === 'exact' && literal !== 'number' && !result.numeric && (v.kind === 'num' || v.kind === 'point') ? fractionsIn(plain) : plain;
+      // a point written as numbers: nothing to add, unless the fractions read differently
+      if (literal === 'point') {
+        return asFractions !== plain ? (
+          <span className="result__value">
+            <MathText text={asFractions} />
+          </span>
+        ) : null;
+      }
       if (asFractions !== plain) {
         return (
           <span className="result__stack">

@@ -18,7 +18,7 @@ import { SettingsDialog } from './files/Dialogs';
 import { ProjectsView, type SaveStatus } from './files/ProjectsView';
 import { freeName, getProject, listProjects, projectFile, projectFileName, putProject, readProjectFile, downloadText, type Project, type ProjectData, type ProjectTool } from './files/projects';
 import { EDIT_EVENT, GEO_KEY, PICTURES_KEY } from './files/keys';
-import { geoThumb, graphThumb } from './files/thumb';
+import { geoThumb, graphThumb, graphThumbOffscreen } from './files/thumb';
 import { loadPictures, savePictures, type GraphPicture } from './graph/pictures';
 import { pickPicture, type Picture } from './pictures';
 import { PictureRow } from './components/PictureRow';
@@ -539,7 +539,8 @@ export function App() {
     const wanted = data.name.trim() || fls.untitled;
     const name = old ? wanted : freeName(wanted, list.map((p) => p.name));
     const view = modeRef.current;
-    const thumb = (view === 'geo' ? geoThumb(data.geo) : view === 'graph' ? graphThumb() : null) ?? old?.thumb ?? geoThumb(data.geo) ?? undefined;
+    // a picture of what was worked on: the graph or the board, drawn off screen when another tab is open
+    const thumb = (view === 'geo' ? geoThumb(data.geo) : view === 'graph' ? graphThumb() : null) ?? old?.thumb ?? graphThumbOffscreen(graphables, seriesOf, numberForm === 'exact' ? (n) => writeNumber(n, 'exact') : undefined) ?? geoThumb(data.geo) ?? undefined;
     const p: Project = { ...data, name, id: old?.id ?? newId(), created: old?.created ?? Date.now(), updated: Date.now(), ...(thumb ? { thumb } : {}) };
     try {
       await putProject(p);

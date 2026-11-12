@@ -27,14 +27,15 @@ import {
 import { Suspense, lazy, useEffect, useMemo, useReducer, useRef, useState, type KeyboardEvent, type PointerEvent } from 'react';
 import type { Graph3DHandle, Surface } from './Graph3D';
 import type { Strings } from '../i18n';
-import { exportPdf, exportPng, exportSvg, exportTikz, graphSvg, readTheme } from './exportGraph';
+import { download, exportPdf, exportPng, exportSvg, exportTikz, graphSvg, readTheme } from './exportGraph';
+import { canvasToPdf, svgToCanvas } from '../geo/exportFigure';
 import { exportGif, exportVideo, videoType, type Sweep } from './animate';
 import { MathText } from '../components/MathText';
 import { Menu, type MenuItem } from './Menu';
 import { fromLocal, nice, toLocal, type GraphPicture } from './pictures';
 import { useNumberForm } from '../numberForm';
 import { toFraction } from '../calc/fraction';
-import { crossingsWith, literalPoints, pointNames, setLiteral, shiftLiterals } from './handles';
+import { crossingsWith, exactCrossing, literalPoints, pointNames, primOfShape, setLiteral, shiftLiterals, type Prim } from './handles';
 import { decodedImage, pickPicture, pictureFile, readPicture, type Picture } from '../pictures';
 import { GraphSettings } from './GraphSettings';
 import { fitRange } from './fit';
@@ -254,6 +255,8 @@ export function GraphPanel({
   }, [fit, fitDone, size]);
   // zoom box: Shift+drag, or drag after pressing the zoom-box button
   const [boxMode, setBoxMode] = useState(false);
+  /** a phone's folded graph options, opened */
+  const [hudOpen, setHudOpen] = useState(false);
   // pictures under the curves, like Desmos images; the list keeps them, one selected at a time
   const [picsReady, picLoaded] = useReducer((n: number) => n + 1, 0);
   const picDrag = useRef<{ id: string; mode: 'move' | 'rot' | Corner; start: [number, number]; orig: GraphPicture } | null>(null);
@@ -470,9 +473,11 @@ export function GraphPanel({
     const pairs: [string, string][] = selectedGraph
       ? ids.filter((id) => id !== selectedGraph.id).map((id) => [selectedGraph.id, id])
       : ids.flatMap((a, i) => ids.slice(i + 1).map((b) => [a, b] as [string, string]));
-    const fnOf = (id: string) => {
+    const primOf = (id: string, near: { x: number; y: number }): Prim | null => {
       const g = graphables.find((q) => q.id === id);
-      return g?.kind === 'curve' && g.dir === 'y' ? g.fn : null;
+      if (g?.kind === 'curve' && g.dir === 'y') return { kind: 'fn', f: g.fn };
+      if (g?.kind === 'shape') return primOfShape(g.shape as Parameters<typeof primOfShape>[0], near);
+      return null;
     };
     const found: { x: number; y: number }[] = [];
     for (const [a, b] of pairs) {
@@ -481,21 +486,10 @@ export function GraphPanel({
       if (!pa?.length || !pb?.length) continue;
       for (const q of crossingsWith(pa, pb, 30)) {
         let [x, y] = planeAt(viewport, q.x, q.y) as [number, number];
-        // two curves y = f(x): the crossing found exactly, by halving the gap where f - g changes sign
-        const [f, g] = [fnOf(a), fnOf(b)];
-        if (f && g) {
-          const h = (t: number) => f(t) - g(t);
-          let [lo, hi] = [x - 3 / viewport.scale, x + 3 / viewport.scale];
-          if (Math.sign(h(lo)) !== Math.sign(h(hi))) {
-            for (let k = 0; k < 60; k++) {
-              const m = (lo + hi) / 2;
-              if (Math.sign(h(m)) === Math.sign(h(lo))) lo = m;
-              else hi = m;
-            }
-            x = (lo + hi) / 2;
-            y = f(x);
-          }
-        }
+        // worked out exactly from what the two are (curves, sides, lines, circles), when it can be
+        const [pa2, pb2] = [primOf(a, { x, y }), primOf(b, { x, y })];
+        const exact = pa2 && pb2 ? exactCrossing(pa2, pb2, { x, y }, 3 / viewport.scale) : null;
+        if (exact && Number.isFinite(exact.x) && Number.isFinite(exact.y) && Math.hypot(exact.x - x, exact.y - y) * viewport.scale < 6) [x, y] = [exact.x, exact.y];
         const clean = (v: number) => (Math.abs(v - Math.round(v * 1e9) / 1e9) < 1e-10 ? Math.round(v * 1e9) / 1e9 : v);
         const pt = { x: clean(x), y: clean(y) };
         if (!found.some((o) => Math.hypot(toPx(viewport, o.x) - toPx(viewport, pt.x), toPy(viewport, o.y) - toPy(viewport, pt.y)) < 6)) found.push(pt);
@@ -738,11 +732,23 @@ export function GraphPanel({
   const doExport = async (kind: 'svg' | 'png' | 'pdf' | 'tex') => {
     const el = wrapRef.current!;
     const name = exam ? 'figure' : 'graph';
-    if (kind === 'pdf') return exportPdf(graphables, viewport, sceneOpts, el, name);
+    // the pictures go in the file too, under the curves as on screen
+    const underlay = pictures
+      .map((p) => {
+        const [x, y] = [toPx(viewport, p.cx), toPy(viewport, p.cy)];
+        const [w, h] = [p.w * viewport.scale, p.h * viewport.scale];
+        const turn = p.angle ? ` transform="rotate(${(-(p.angle * 180) / Math.PI).toFixed(3)} ${x.toFixed(2)} ${y.toFixed(2)})"` : '';
+        return `<image href="${p.src}" x="${(x - w / 2).toFixed(2)}" y="${(y - h / 2).toFixed(2)}" width="${w.toFixed(2)}" height="${h.toFixed(2)}" opacity="${p.opacity}" preserveAspectRatio="none"${turn}/>`;
+      })
+      .join('');
     if (kind === 'tex') return exportTikz(graphables, viewport, sceneOpts, el, name);
-    const svg = graphSvg(graphables, viewport, sceneOpts, el);
-    if (kind === 'svg') exportSvg(svg, name);
-    else await exportPng(svg, size.width, size.height, name);
+    if (kind === 'pdf' && !underlay) return exportPdf(graphables, viewport, sceneOpts, el, name);
+    const svg = graphSvg(graphables, viewport, sceneOpts, el, underlay);
+    if (kind === 'svg') return exportSvg(svg, name);
+    if (kind === 'png') return exportPng(svg, size.width, size.height, name);
+    // a PDF with pictures: the page as a fine image (the vector writer has no pictures)
+    const canvas = await svgToCanvas(svg, size.width, size.height, 4);
+    await download(await canvasToPdf(canvas, size.width, size.height), `${name}.pdf`);
   };
 
   const animName = sliders.some((s) => s.name === animated) ? animated! : sliders[0]?.name ?? null;
@@ -1022,6 +1028,15 @@ export function GraphPanel({
             ))}
           </div>
         )}
+        {/* on a phone the rest folds behind one button, so the graph stays in view */}
+        <button type="button" className="hud-btn hud-btn--icon hud__more-toggle" aria-expanded={hudOpen} aria-label={t.graphOptions} title={t.graphOptions} onClick={() => setHudOpen((v) => !v)}>
+          <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
+            <circle cx="3.5" cy="8" r="1.3" fill="currentColor" />
+            <circle cx="8" cy="8" r="1.3" fill="currentColor" />
+            <circle cx="12.5" cy="8" r="1.3" fill="currentColor" />
+          </svg>
+        </button>
+        <div className="hud__more" data-open={hudOpen || undefined}>
         {styles}
         {templatesMenu}
         <button type="button" className="hud-btn" title={t.addPicture} onClick={() => void addPicture()}>
@@ -1049,6 +1064,7 @@ export function GraphPanel({
             </button>
           </>
         )}
+        </div>
       </div>
 
       <div className="hud hud--top-right">

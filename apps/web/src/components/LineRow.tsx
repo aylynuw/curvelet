@@ -16,6 +16,7 @@ import type { Lang } from '../i18n';
 import { StepsView, type Call, type IntegralAsk } from '../learn/StepsView';
 import type { LearnStrings } from '../learn/strings';
 import type { EvalSettings } from '@math/engine';
+import { fractionsIn, useNumberForm } from '../numberForm';
 
 /** let a = 2 gets a slider: its name and value */
 export function sliderOf(source: string): { name: string; value: number; min: number; max: number } | null {
@@ -168,7 +169,10 @@ export function LineRow({
   const colour = swatch !== undefined ? swatchColor : undefined;
   const [styling, setStyling] = useState(false);
   // a slider's own value is already on the line
-  const hasResult = !!result && result.status !== 'empty' && !(slider && result.status === 'value');
+  const form = useNumberForm();
+  // a point written as numbers says nothing more, unless its fractions read differently
+  const quietPoint = literalKind(source) === 'point' && result?.status === 'value' && (form === 'decimal' || fractionsIn(result.text) === result.text);
+  const hasResult = !!result && result.status !== 'empty' && !(slider && result.status === 'value') && !quietPoint;
   return (
     <li
       className={`line${inFolder ? ' line--in-folder' : ''}${folder ? ' line--folder' : ''}${note !== undefined ? ' line--note' : ''}`}
@@ -334,7 +338,7 @@ export function LineRow({
           </div>
         )}
         <output className="line__result" id={resultId} aria-live="polite" hidden={!hasResult}>
-          <ResultView literal={/^\s*(let\s+|const\s+)?[A-Za-z]\w*\s*=\s*[-−]?\d*\.?\d+\s*$/.test(source)} result={result} t={t} pendingNote={pendingNote} onDefine={onDefine} onSwitch={onSwitch} graphIssue={graphIssue} curveRange={curveRange} hidden={!!look?.hidden || folderHidden} />
+          <ResultView literal={literalKind(source)} result={result} t={t} pendingNote={pendingNote} onDefine={onDefine} onSwitch={onSwitch} graphIssue={graphIssue} curveRange={curveRange} hidden={!!look?.hidden || folderHidden} />
         </output>
         {hint && (
           <p className="line__hint">
@@ -366,4 +370,12 @@ export function LineRow({
       </button>
     </li>
   );
+}
+
+const NUM = String.raw`[-−]?\d*\.?\d+`;
+const NUMBER_LINE = new RegExp(String.raw`^\s*(let\s+|const\s+)?[A-Za-z]\w*\s*=\s*${NUM}\s*$`);
+const POINT_LINE = new RegExp(String.raw`^\s*(let\s+|const\s+)?[A-Za-z]\w*\s*=\s*\(\s*${NUM}\s*,\s*${NUM}\s*\)\s*(\{[^}]*\})?\s*$`);
+/** a line that is only numbers as typed (a = -1.1, Q = (2.2, 4.048)): its answer would repeat it */
+function literalKind(source: string): 'number' | 'point' | undefined {
+  return NUMBER_LINE.test(source) ? 'number' : POINT_LINE.test(source) ? 'point' : undefined;
 }

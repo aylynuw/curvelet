@@ -63,9 +63,9 @@ export function exportScene(graphables: Graphable[], view: Viewport, opts: Scene
 }
 
 /** The current view as an SVG document. */
-export function graphSvg(graphables: Graphable[], view: Viewport, opts: SceneOptions, el: Element): string {
+export function graphSvg(graphables: Graphable[], view: Viewport, opts: SceneOptions, el: Element, underlay = ''): string {
   const { scene, theme } = exportScene(graphables, view, opts, el);
-  return sceneToSvg(scene, theme);
+  return sceneToSvg(scene, theme, underlay);
 }
 
 export function exportPdf(graphables: Graphable[], view: Viewport, opts: SceneOptions, el: Element, name: string) {
