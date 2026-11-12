@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { checkAnswer, levelTopics, makeProblem, nextProblem, problemSteps, TEMPLATES } from '../src';
+import { checkAnswer, levelTopics, makeProblem, mockExam, nextProblem, problemSteps, TEMPLATES } from '../src';
 
 describe('practice problems', () => {
   for (const name of Object.keys(TEMPLATES)) {
@@ -23,7 +23,7 @@ describe('practice problems', () => {
       for (let seed = 1; seed <= 200; seed++) {
         const p = makeProblem(name, seed);
         expect(Number.isInteger(p.value), `${name} ${seed}: ${p.value}`).toBe(true);
-        expect(Math.abs(p.value!)).toBeLessThan(1000);
+        expect(Math.abs(p.value!), `${name} ${seed}`).toBeLessThan(1000);
         expect([2, 3, 4]).toContain(p.points);
         expect(p.solution!.en.length).toBe(p.solution!.ko.length);
         expect(p.prompt!.ko).toMatch(/\$\$/);
@@ -65,6 +65,26 @@ describe('practice problems', () => {
       const s = problemSteps(p)!;
       if (s.kind !== 'equation') throw new Error('expected equation steps');
       expect(s.steps.solutions!.length).toBe(p.solutions!.length);
+    }
+  });
+});
+
+describe('mock exam', () => {
+  it('is laid out like the 수능: 30 problems, 100 points, five choices where due, natural short answers', () => {
+    for (const elective of ['calc2', 'stats'] as const) {
+      for (let k = 0; k < 20; k++) {
+        const paper = mockExam(elective);
+        expect(paper.length).toBe(30);
+        expect(paper.reduce((s, p) => s + p.points!, 0)).toBe(100);
+        paper.forEach((p, i) => {
+          const choice = i < 15 || (i >= 22 && i < 28);
+          expect(Boolean(p.choices), `${i + 1}`).toBe(choice);
+          if (p.choices && p.value! >= 1) expect(Math.min(...p.choices)).toBeGreaterThanOrEqual(1);
+          if (p.choices) expect(p.choices).toContain(p.value);
+          else expect(p.value! >= 1 && p.value! <= 999, `${i + 1}: ${p.template} ${p.value}`).toBe(true);
+          expect(p.topic === elective).toBe(i >= 22);
+        });
+      }
     }
   });
 });

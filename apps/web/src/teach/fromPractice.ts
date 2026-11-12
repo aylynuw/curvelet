@@ -1,4 +1,4 @@
-import { nextProblem, type Level, type Problem as Drill, type Topic } from '@math/steps';
+import { mockExam, nextProblem, type Level, type Problem as Drill, type Topic } from '@math/steps';
 import type { Lang } from '../i18n';
 import { questionTex } from '../learn/Practice';
 import type { LearnStrings } from '../learn/strings';
@@ -35,4 +35,22 @@ export function generateProblems(level: Level, topic: Topic, count: number, lang
     out.push(toSheetProblem(p, lang, learn));
   }
   return out;
+}
+
+const CIRCLED = ['①', '②', '③', '④', '⑤'];
+
+/** A whole mock exam as worksheet problems: the choices under each five-choice problem, the answer key with its working. */
+export function mockSheet(elective: 'calc2' | 'stats', lang: Lang): Problem[] {
+  return mockExam(elective).map((item) => {
+    const working = item.solution?.[lang] ?? [];
+    const choices = item.choices?.map((v, k) => `${CIRCLED[k]} $$${v}$$`).join('  ');
+    const at = item.choices?.indexOf(item.value!) ?? -1;
+    return {
+      ...blankProblem(),
+      text: choices ? `${item.prompt![lang]}\n${choices}` : item.prompt![lang],
+      answer: [at >= 0 ? `${CIRCLED[at]} ${item.value}` : String(item.value), ...working].join('\n'),
+      points: item.points ?? 0,
+      space: (item.points ?? 3) + 3,
+    };
+  });
 }

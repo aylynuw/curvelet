@@ -10,8 +10,43 @@
     <meta name="theme-color" content="#1c65c8" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <title>Curvelet: graphs, exact math and geometry</title>
+    <script src="./theme-boot.js"></script>
+    <style>
+      /* the opening screen, shown before the app's own styles load */
+      :root { --splash-paper: oklch(100% 0 0); --splash-ink: oklch(23% 0.012 265); --splash-accent: oklch(52% 0.17 258); --splash-accent-ink: oklch(99% 0.003 260); }
+      @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --splash-paper: oklch(19.5% 0.007 265); --splash-ink: oklch(94% 0.004 265); --splash-accent: oklch(72% 0.13 255); --splash-accent-ink: oklch(18% 0.02 260); } }
+      :root[data-theme="dark"] { --splash-paper: oklch(19.5% 0.007 265); --splash-ink: oklch(94% 0.004 265); --splash-accent: oklch(72% 0.13 255); --splash-accent-ink: oklch(18% 0.02 260); }
+      html, body { margin: 0; background: var(--splash-paper); }
+      #splash { position: fixed; inset: 0; z-index: 1000; display: grid; place-items: center; background: var(--splash-paper); color: var(--splash-ink); pointer-events: none; font-family: "IBM Plex Sans", "Apple SD Gothic Neo", system-ui, sans-serif; }
+      #splash .splash__lockup { display: flex; align-items: center; gap: 14px; }
+      #splash .splash__word { font-size: 30px; font-weight: 600; letter-spacing: -0.01em; }
+      #splash.is-leaving { opacity: 0; transition: opacity 320ms cubic-bezier(0.16, 1, 0.3, 1); }
+      /* if the app never starts, the opening screen still goes away */
+      #splash { animation: splash-away 1ms linear 4s forwards; }
+      @media (prefers-reduced-motion: no-preference) {
+        #splash { animation-duration: 400ms; animation-timing-function: ease-in; }
+        #splash .splash__mark { animation: splash-pop 520ms cubic-bezier(0.16, 1, 0.3, 1) both; }
+        #splash .splash__curve { stroke-dasharray: 22; stroke-dashoffset: 22; animation: splash-draw 700ms cubic-bezier(0.65, 0, 0.35, 1) 160ms forwards; }
+        #splash .splash__word { animation: splash-rise 480ms cubic-bezier(0.16, 1, 0.3, 1) 260ms both; }
+        #splash.is-leaving { transform: scale(1.03); transition: opacity 320ms cubic-bezier(0.16, 1, 0.3, 1), transform 320ms cubic-bezier(0.16, 1, 0.3, 1); }
+      }
+      @keyframes splash-pop { from { opacity: 0; transform: scale(0.82) rotate(-6deg); } to { opacity: 1; transform: none; } }
+      @keyframes splash-draw { to { stroke-dashoffset: 0; } }
+      @keyframes splash-rise { from { opacity: 0; transform: translateX(-8px); } to { opacity: 1; transform: none; } }
+      @keyframes splash-away { to { opacity: 0; visibility: hidden; } }
+    </style>
+    <noscript><style>#splash { display: none; }</style></noscript>
   </head>
   <body>
+    <div id="splash" aria-hidden="true">
+      <div class="splash__lockup">
+        <svg class="splash__mark" viewBox="0 0 24 24" width="52" height="52">
+          <rect x="1.5" y="1.5" width="21" height="21" rx="6" fill="var(--splash-accent)" />
+          <path class="splash__curve" d="M6 15.5c2.2 0 2.6-7 6-7s3.8 7 6 7" stroke="var(--splash-accent-ink)" stroke-width="1.8" fill="none" stroke-linecap="round" />
+        </svg>
+        <span class="splash__word">Curvelet</span>
+      </div>
+    </div>
     <div id="root">
       <noscript>This calculator needs JavaScript to evaluate expressions.</noscript>
     </div>

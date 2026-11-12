@@ -72,6 +72,7 @@ export function Practice({
   const [score, setScore] = useState({ right: 0, tried: 0, counted: false, solved: false });
   const field = useRef<MathfieldElement | null>(null);
   const [added, setAdded] = useState<number | null>(null);
+  const [checks, setChecks] = useState(0);
 
   const fresh = (t: Topic, l: Level = level) => {
     setPref({ level: l, topic: t });
@@ -94,6 +95,7 @@ export function Practice({
     if (text !== input) setInput(text);
     const v = checkAnswer(problem, text);
     setVerdict(v);
+    setChecks((n) => n + 1);
     if (v.correct === false && v.reason === 'empty') return;
     setScore((sc) => ({
       right: sc.right + (v.correct && !sc.solved && !revealed ? 1 : 0),
@@ -135,11 +137,11 @@ export function Practice({
           {exam && problem.points ? <span className="practice__points"> {lang === 'ko' ? `[${problem.points}점]` : `(${problem.points} points)`}</span> : null}
         </h3>
         {exam ? (
-          <p className="practice__prompt">
+          <p className="practice__prompt" key={`p${problem.seed}`}>
             <RichText text={problem.prompt![lang]} />
           </p>
         ) : (
-          <p className="practice__question">
+          <p className="practice__question" key={`q${problem.seed}`}>
             <LatexText latex={questionTex(problem)} label={problem.question} />
           </p>
         )}
@@ -190,7 +192,11 @@ export function Practice({
         </div>
 
         <p className="practice__verdict" role="status" data-correct={verdict ? String(verdict.correct) : undefined}>
-          {verdict && (verdict.correct ? s.correct : s.verdict[verdict.reason])}
+          {verdict && (
+            <span key={checks} className="practice__verdict-text">
+              {verdict.correct ? s.correct : s.verdict[verdict.reason]}
+            </span>
+          )}
         </p>
 
         {revealed && (

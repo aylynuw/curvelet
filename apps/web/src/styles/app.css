@@ -15,7 +15,7 @@ body { background: var(--color-bg); font-size: var(--text-md); }
 /* ---------- controls ---------- */
 .btn, .segmented button, .icon-btn, .tab, .key, .row-btn, .example, .hud-btn, .menu__item, .poi__item {
   font: inherit; color: var(--color-ink); background: transparent; cursor: pointer;
-  transition: background-color var(--dur-micro) var(--ease-out), color var(--dur-micro) var(--ease-out), border-color var(--dur-micro) var(--ease-out);
+  transition: background-color var(--dur-micro) var(--ease-out), color var(--dur-micro) var(--ease-out), border-color var(--dur-micro) var(--ease-out), transform var(--dur-micro) var(--ease-out);
 }
 .btn { display: inline-flex; align-items: center; gap: var(--space-2xs); min-height: var(--control); padding: 0 var(--space-sm); border: var(--rule-hair) solid var(--color-rule); border-radius: var(--radius); background: var(--color-paper); font-size: var(--text-sm); font-weight: 500; white-space: nowrap; }
 .btn--small { min-height: var(--control); padding: 0 var(--space-xs); font-size: var(--text-sm); }
@@ -373,6 +373,13 @@ textarea.input { resize: vertical; line-height: 1.5; }
 .ws-generate { display: grid; grid-template-columns: minmax(0, 1fr) 5rem; gap: var(--space-xs); align-items: end; padding: var(--space-sm); border-radius: var(--radius); background: var(--color-paper-2); }
 .ws-generate .btn { grid-column: 1 / -1; justify-self: start; }
 .ws-generate > :first-child { grid-column: 1 / -1; }
+.ws-choices { display: flex; flex-wrap: wrap; gap: 0.2em 1.6em; margin-top: 0.4em; }
+.ws-choice { white-space: nowrap; }
+.ws-mock { display: flex; flex-direction: column; gap: var(--space-xs); padding: var(--space-sm); border-radius: var(--radius); border: var(--rule-hair) solid var(--color-rule); }
+.ws-mock__title { margin: 0; font-size: var(--text-sm); font-weight: 600; }
+.ws-mock__note { margin: 0; font-size: var(--text-xs); line-height: 1.55; color: var(--color-muted); word-break: keep-all; overflow-wrap: break-word; }
+.ws-mock__row { display: flex; flex-wrap: wrap; align-items: end; gap: var(--space-xs); }
+.ws-mock__row .field { flex: 1 1 8rem; min-width: 0; }
 
 .ws-preview { min-width: 0; min-height: 0; overflow: auto; padding: var(--space-md); background: var(--color-bg); }
 .ws-pages { display: flex; flex-direction: column; align-items: center; gap: var(--space-lg); }
@@ -686,3 +693,39 @@ textarea.input { resize: vertical; line-height: 1.5; }
 .lesson__math .tex { font-size: var(--text-md); }
 .lesson__done { align-self: flex-start; }
 .lesson__done[aria-pressed='true'] { background: var(--color-paper-3); }
+
+/* ---------- motion: what changes moves in; nothing moves for people who ask for less ---------- */
+@media (prefers-reduced-motion: no-preference) {
+  .btn:active, .segmented button:active, .tab:active, .key:active, .example:active, .geo__tool:active, .row-btn:active { transform: scale(0.97); }
+
+  /* a new tool, tab, lesson or study view rises into place */
+  .workspace, .workspace--tool, .workspace--sheet { animation: ui-fade var(--dur-short) var(--ease-out) both; }
+  .tabpanel > *, .study__practice, .study > .ws, .lesson__body { animation: ui-rise 260ms var(--ease-out) both; }
+  .tab[aria-selected="true"]::after { transform-origin: center; animation: ui-underline 240ms var(--ease-out) both; }
+
+  /* menus and panels open from their button; dialogs from the middle */
+  .menu__list, .gsettings__panel { transform-origin: top right; animation: ui-pop 160ms var(--ease-out) both; }
+  .look { transform-origin: top left; animation: ui-pop 160ms var(--ease-out) both; }
+  .dialog[open] { animation: ui-dialog 220ms var(--ease-out) both; }
+  .dialog[open]::backdrop { animation: ui-fade 220ms var(--ease-out) both; }
+  .notice { animation: ui-drop 240ms var(--ease-out) both; }
+  .keypad-dock { animation: ui-rise 240ms var(--ease-out) both; }
+
+  /* practice: each new problem rises in, a right answer lifts once */
+  .practice__question, .practice__prompt, .practice__solution, .practice__answer { animation: ui-rise 300ms var(--ease-out) both; }
+  .practice__verdict-text { display: inline-block; }
+  .practice__verdict[data-correct="true"] .practice__verdict-text { animation: ui-cheer 420ms var(--ease-out) both; }
+  .practice__verdict[data-correct="false"] .practice__verdict-text { animation: ui-nudge 320ms var(--ease-in-out) both; }
+
+  /* a new line in the list, and a fresh answer */
+  .line { animation: ui-rise 200ms var(--ease-out) both; }
+  .lesson[data-done] .lesson__num { animation: ui-cheer 420ms var(--ease-out) both; }
+}
+@keyframes ui-fade { from { opacity: 0; } to { opacity: 1; } }
+@keyframes ui-rise { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+@keyframes ui-drop { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: none; } }
+@keyframes ui-pop { from { opacity: 0; transform: scale(0.96) translateY(-4px); } to { opacity: 1; transform: none; } }
+@keyframes ui-dialog { from { opacity: 0; transform: scale(0.97) translateY(8px); } to { opacity: 1; transform: none; } }
+@keyframes ui-underline { from { transform: scaleX(0.3); opacity: 0; } to { transform: none; opacity: 1; } }
+@keyframes ui-cheer { 0% { transform: scale(0.9); opacity: 0; } 60% { transform: scale(1.06); opacity: 1; } 100% { transform: none; } }
+@keyframes ui-nudge { 0%, 100% { transform: none; } 25% { transform: translateX(-4px); } 75% { transform: translateX(4px); } }

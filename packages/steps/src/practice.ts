@@ -1,7 +1,10 @@
 import { compileReal, DEFAULT_SETTINGS, EMPTY_ENV, evaluate, parse, parseExpression, printNode, type Node } from '@math/engine';
 import { add, call, div, id, mul, num, pow, tidy } from './ast';
 import { diffSteps } from './derivative';
-import { EXAM_TEMPLATES, type Unit } from './exam';
+import { EXAM_TEMPLATES as BASE_EXAM, type Unit } from './exam';
+import { MORE_EXAM } from './exam2';
+
+const EXAM_TEMPLATES = { ...BASE_EXAM, ...MORE_EXAM };
 import { solveSteps } from './equation';
 import { polyNode, Q, toPoly, type Poly } from './rational';
 
@@ -286,7 +289,7 @@ export const LEVEL_TEMPLATES: Record<Level, Partial<Record<Topic, string[]>>> = 
     equation: ['equation-cubic', 'equation-fraction-roots'],
     integral: ['integral-substitution', 'integral-parts'],
   },
-  exam: { algebra: examOf('algebra'), calculus: examOf('calculus') },
+  exam: { algebra: examOf('algebra'), calculus: examOf('calculus'), calc2: examOf('calc2'), stats: examOf('stats') },
 };
 /** the basic templates, by topic */
 export const TOPIC_TEMPLATES = LEVEL_TEMPLATES.basic as Record<'derivative' | 'equation' | 'integral', string[]>;
@@ -404,3 +407,59 @@ export function problemSteps(p: Problem) {
   return null;
 }
 
+
+/** a mock exam problem: its number on the paper, and five choices when it is multiple choice */
+export interface ExamItem extends Problem {
+  number: number;
+  choices?: number[];
+}
+
+/**
+ * A full paper laid out like the 수능 mathematics section: 22 common
+ * problems (수학Ⅰ and 수학Ⅱ: 1–15 five-choice, 16–22 short answer) and 8 on
+ * the elective (23–28 five-choice, 29–30 short answer), 100 points in all,
+ * easiest first in each part. Short answers are natural numbers below 1000.
+ */
+export function mockExam(elective: 'calc2' | 'stats', random = Math.random): ExamItem[] {
+  const parts: { units: Unit[]; points: number[]; choice: boolean }[] = [
+    { units: ['algebra', 'calculus'], points: [2, 2, 3, 3, 3, 3, 3, 3, 4, 4, 4, 4, 4, 4, 4], choice: true },
+    { units: ['algebra', 'calculus'], points: [3, 3, 3, 3, 4, 4, 4], choice: false },
+    { units: [elective], points: [2, 3, 3, 3, 3, 4], choice: true },
+    { units: [elective], points: [4, 4], choice: false },
+  ];
+  const used = new Set<string>();
+  const out: ExamItem[] = [];
+  let turn = 0;
+  for (const part of parts) {
+    for (const points of part.points) {
+      const unit = part.units[turn++ % part.units.length]!;
+      const pool = Object.entries(EXAM_TEMPLATES).filter(([name, t]) => t.unit === unit && !used.has(name));
+      const all = pool.length ? pool : Object.entries(EXAM_TEMPLATES).filter(([, t]) => t.unit === unit);
+      // the same points if there are any left, the nearest otherwise
+      const best = Math.min(...all.map(([, t]) => Math.abs(t.points - points)));
+      const fits = all.filter(([, t]) => Math.abs(t.points - points) === best);
+      let made: Problem | null = null;
+      for (let tries = 0; tries < 120 && !made; tries++) {
+        // the right points first; any template of the unit if those can't give a natural answer
+        const from = tries < 60 ? fits : all.length > 1 ? all : Object.entries(EXAM_TEMPLATES).filter(([, t]) => t.unit === unit);
+        const [name] = from[Math.floor(random() * from.length)]!;
+        const p = makeProblem(name, Math.floor(random() * 2 ** 31));
+        if (!part.choice && !(p.value! >= 1 && p.value! <= 999)) continue;
+        made = p;
+        used.add(name);
+      }
+      if (!made) continue;
+      const item: ExamItem = { ...made, points, number: out.length + 1 };
+      if (part.choice) {
+        const v = made.value!;
+        const step = Math.max(1, Math.round(Math.abs(v) / 12));
+        let at = Math.floor(random() * 5);
+        // a positive answer gets positive choices, as on the paper
+        if (v >= 1) at = Math.min(at, Math.floor((v - 1) / step));
+        item.choices = Array.from({ length: 5 }, (_, j) => v + (j - at) * step);
+      }
+      out.push(item);
+    }
+  }
+  return out;
+}

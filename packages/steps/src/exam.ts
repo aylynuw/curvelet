@@ -7,8 +7,8 @@
  * Text is written for the worksheet's rich text: $$…$$ is LaTeX.
  */
 
-export type Unit = 'algebra' | 'calculus';
-type Rng = {
+export type Unit = 'algebra' | 'calculus' | 'calc2' | 'stats';
+export type Rng = {
   int: (lo: number, hi: number) => number;
   nonzero: (lo: number, hi: number) => number;
   pick: <T>(list: readonly T[]) => T;
@@ -19,7 +19,7 @@ export interface ExamMade {
   /** the working, one line per step, in both languages */
   solution: { en: string[]; ko: string[] };
 }
-interface ExamTemplate {
+export interface ExamTemplate {
   unit: Unit;
   points: 2 | 3 | 4;
   make: (r: Rng) => ExamMade;
@@ -27,7 +27,7 @@ interface ExamTemplate {
 
 // ---- LaTeX helpers
 /** c·body as the next term of a sum: "+ 3x", "- x", "+ 5" */
-function term(c: number, body: string, first: boolean): string {
+export function term(c: number, body: string, first: boolean): string {
   if (c === 0) return '';
   const a = Math.abs(c);
   const coef = body && a === 1 ? '' : String(a);
@@ -47,20 +47,20 @@ export function polyTex(coeffs: number[], v = 'x'): string {
   return out || '0';
 }
 /** x − a written properly: x - 2, x + 3 */
-const minus = (v: string, a: number) => (a === 0 ? v : a > 0 ? `${v} - ${a}` : `${v} + ${-a}`);
+export const minus = (v: string, a: number) => (a === 0 ? v : a > 0 ? `${v} - ${a}` : `${v} + ${-a}`);
 /** a number added on: + 3, - 3 */
-const plus = (a: number) => (a < 0 ? `- ${-a}` : `+ ${a}`);
-const frac = (n: number, d: number) => {
+export const plus = (a: number) => (a < 0 ? `- ${-a}` : `+ ${a}`);
+export const frac = (n: number, d: number) => {
   const g = gcdInt(Math.abs(n), Math.abs(d)) || 1;
   const [p, q] = [n / g, d / g];
   if (q === 1) return String(p);
   return `${p < 0 ? '-' : ''}\\frac{${Math.abs(p)}}{${q}}`;
 };
-function gcdInt(a: number, b: number): number {
+export function gcdInt(a: number, b: number): number {
   while (b) [a, b] = [b, a % b];
   return a;
 }
-const m = (tex: string) => `$$${tex}$$`;
+export const m = (tex: string) => `$$${tex}$$`;
 
 export const EXAM_TEMPLATES: Record<string, ExamTemplate> = {
   // ---------------- 수학Ⅰ

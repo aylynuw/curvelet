@@ -15,6 +15,22 @@ createRoot(document.getElementById('root')!).render(
   </StrictMode>,
 );
 
+// the opening screen: it stays until its animation has played (about 0.9 s from
+// the page's start), then fades away over the app's first paint
+function hideSplash() {
+  const splash = document.getElementById('splash');
+  if (!splash) return;
+  const still = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const wait = still ? 0 : Math.max(0, 950 - performance.now());
+  setTimeout(() => {
+    requestAnimationFrame(() => {
+      splash.classList.add('is-leaving');
+      setTimeout(() => splash.remove(), 400);
+    });
+  }, wait);
+}
+requestAnimationFrame(hideSplash);
+
 // the math editor follows the first paint
 void loadMathLive();
 

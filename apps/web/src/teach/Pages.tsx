@@ -76,8 +76,26 @@ export function Pages({
         <div className="ws-problem__head">
           <span className="ws-num">{k + 1}.</span>
           <div className="ws-text">
-            <RichText text={p.text} />
-            {p.points > 0 && <span className="ws-points"> {s.pointsMark(p.points)}</span>}
+            {(() => {
+              // five choices on the last line: the points go after the question, before them
+              const at = p.text.lastIndexOf('\n①');
+              const [body, choices] = at >= 0 ? [p.text.slice(0, at), p.text.slice(at + 1)] : [p.text, ''];
+              return (
+                <>
+                  <RichText text={body} />
+                  {p.points > 0 && <span className="ws-points"> {s.pointsMark(p.points)}</span>}
+                  {choices && (
+                    <span className="ws-choices">
+                      {choices.split(/\s{2,}|\u2003+/u).filter(Boolean).map((c, j) => (
+                        <span key={j} className="ws-choice">
+                          <RichText text={c} />
+                        </span>
+                      ))}
+                    </span>
+                  )}
+                </>
+              );
+            })()}
           </div>
         </div>
         {p.figure && (

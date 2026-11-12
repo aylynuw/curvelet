@@ -5,7 +5,7 @@ import type { Lang } from '../i18n';
 import type { LearnStrings } from '../learn/strings';
 import { Pages } from './Pages';
 import type { TeachStrings } from './strings';
-import { generateProblems } from './fromPractice';
+import { generateProblems, mockSheet } from './fromPractice';
 import { FIGURE_TEMPLATES } from './templates';
 import { blankProblem, newId, PAPER, PX_PER_MM, type Figure, type Paper, type Problem, type Worksheet } from './worksheet';
 
@@ -77,6 +77,17 @@ export function WorksheetView({
   const [genTopic, setGenTopic] = useState<Topic>('calculus');
   const [genCount, setGenCount] = useState(4);
   const generate = () => set({ problems: [...sheet.problems, ...generateProblems(genLevel, genTopic, genCount, lang, learn)] });
+  const [mockElective, setMockElective] = useState<'calc2' | 'stats'>('calc2');
+  const makeMock = () => {
+    if (sheet.problems.length > 0 && !window.confirm(s.mockReplace)) return;
+    set({
+      title: s.mockTitle,
+      subtitle: s.mockSubtitle(learn.topics[mockElective]),
+      columns: 2,
+      answerKey: true,
+      problems: mockSheet(mockElective, lang),
+    });
+  };
 
   const addProblem = () => {
     const p = blankProblem();
@@ -215,6 +226,23 @@ export function WorksheetView({
             <button type="button" className="btn btn--small" onClick={generate}>
               {s.generate}
             </button>
+          </div>
+          <div className="ws-mock" role="group" aria-labelledby="ws-mock-title">
+            <h3 id="ws-mock-title" className="ws-mock__title">
+              {s.mock}
+            </h3>
+            <p className="ws-mock__note">{s.mockNote}</p>
+            <div className="ws-mock__row">
+              <Field label={s.mockElective}>
+                <select className="input" value={mockElective} onChange={(e) => setMockElective(e.target.value as 'calc2' | 'stats')}>
+                  <option value="calc2">{learn.topics.calc2}</option>
+                  <option value="stats">{learn.topics.stats}</option>
+                </select>
+              </Field>
+              <button type="button" className="btn btn--small btn--primary" onClick={makeMock}>
+                {s.mockMake}
+              </button>
+            </div>
           </div>
         </section>
       </aside>
