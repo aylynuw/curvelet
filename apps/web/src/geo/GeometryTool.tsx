@@ -7,6 +7,7 @@ import { decorate } from './labels';
 import { cloneObjects, cornerIds, crossings, type PathNode, draggable, freeRoots, measure, nextName, refs, resolve, toLines, withAncestors, without, type Deco, type GeoObject, type Pt, type Shape } from './model';
 import { PropertiesPanel, type AngleTarget, type LengthTarget } from './PropertiesPanel';
 import { BASE_PROPS, type GeoProps } from './props';
+import { GEO_KEY, notifyEdit } from '../files/keys';
 import { pickPicture, pictureFile, readPicture, type Picture } from '../pictures';
 
 type QuickAction = 'lengths' | 'angles' | 'hide' | 'reset';
@@ -42,7 +43,7 @@ interface Snapshot {
   objects: GeoObject[];
   defaults: GeoProps;
 }
-const DOC_KEY = 'calculator.geometry.v1';
+const DOC_KEY = GEO_KEY;
 const START: Doc = { objects: [], view: { cx: 0, cy: 0, s: 50 }, grid: true, axes: true, snap: true, defaults: BASE_PROPS, exam: false, margin: 0.5, snapPoints: true, guides: true };
 function loadDoc(): Doc {
   try {
@@ -248,12 +249,15 @@ export function GeometryTool({ s, onSendToGraph }: { s: GeoStrings; onSendToGrap
   const press = useRef<{ timer: number; at: Pt } | null>(null);
   const coarse = useRef(false);
 
+  const firstDoc = useRef(true);
   useEffect(() => {
     try {
       localStorage.setItem(DOC_KEY, JSON.stringify(doc));
     } catch {
       // kept for this visit only
     }
+    if (firstDoc.current) firstDoc.current = false;
+    else notifyEdit();
   }, [doc]);
   useLayoutEffect(() => {
     const el = svgRef.current!;

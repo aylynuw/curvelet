@@ -31,6 +31,7 @@ import { exportPdf, exportPng, exportSvg, exportTikz, graphSvg, readTheme } from
 import { exportGif, exportVideo, videoType, type Sweep } from './animate';
 import { MathText } from '../components/MathText';
 import { Menu, type MenuItem } from './Menu';
+import { PICTURES_KEY, notifyEdit } from '../files/keys';
 import { decodedImage, pickPicture, pictureFile, readPicture, type Picture } from '../pictures';
 import { GraphSettings } from './GraphSettings';
 import { fitRange } from './fit';
@@ -73,7 +74,6 @@ export interface GraphPicture {
   h: number;
   opacity: number;
 }
-const PICTURES_KEY = 'curvelet.graph.pictures';
 const loadPictures = (): GraphPicture[] => {
   try {
     const v = JSON.parse(localStorage.getItem(PICTURES_KEY) ?? '[]');
@@ -233,12 +233,15 @@ export function GraphPanel({
   const [picRatio, setPicRatio] = useState(true);
   const [picsReady, picLoaded] = useReducer((n: number) => n + 1, 0);
   const picDrag = useRef<{ id: string; mode: 'move' | Corner; start: [number, number]; orig: GraphPicture } | null>(null);
+  const firstPictures = useRef(true);
   useEffect(() => {
     try {
       localStorage.setItem(PICTURES_KEY, JSON.stringify(pictures));
     } catch {
       // too big to keep: it stays for this visit
     }
+    if (firstPictures.current) firstPictures.current = false;
+    else notifyEdit();
   }, [pictures]);
   const picture = pictures.find((p) => p.id === picSel) ?? null;
   const patchPicture = (id: string, patch: Partial<GraphPicture>) => setPictures((ps) => ps.map((p) => (p.id === id ? { ...p, ...patch } : p)));

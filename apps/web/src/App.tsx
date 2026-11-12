@@ -14,14 +14,18 @@ import { Menu } from './graph/Menu';
 import { applyUpdate, isNativeApp, onUpdateReady } from './pwa';
 import { CALC } from './calc/strings';
 import { GEO } from './geo/strings';
-import { FilesDialog, SettingsDialog } from './files/Dialogs';
+import { SettingsDialog } from './files/Dialogs';
+import { ProjectsView, type SaveStatus } from './files/ProjectsView';
+import { freeName, getProject, listProjects, projectFile, projectFileName, putProject, readProjectFile, downloadText, type Project, type ProjectData, type ProjectTool } from './files/projects';
+import { EDIT_EVENT, GEO_KEY, PICTURES_KEY } from './files/keys';
+import { geoThumb, graphThumb } from './files/thumb';
 import { FILES } from './files/strings';
 import { LEARN } from './learn/strings';
 import { TEACH } from './teach/strings';
 import { FORMULA_STRINGS } from './formulas/strings';
 import { WordsInput } from './formulas/WordsInput';
 import { INK } from './ink/strings';
-import { blankProblem, loadWorksheet, saveWorksheet, type Worksheet } from './teach/worksheet';
+import { blankProblem, defaultWorksheet, loadWorksheet, saveWorksheet, type Worksheet } from './teach/worksheet';
 import type { FigureTemplate, Range } from './teach/templates';
 import type { Node } from '@math/engine';
 import { load, newId, save, type Folder, type HistoryItem, type Line, type LineData, type SliderSettings, type Theme } from './storage';
@@ -105,8 +109,9 @@ const hasContent = (l: Line) => !!l.source.trim() || l.note !== undefined || !!l
 
 const GRAPH_KEY = 'calculator.graph.v1';
 
-type Tool = 'graph' | 'calc' | 'geo' | 'sheet';
-const TOOLS: Tool[] = ['graph', 'calc', 'geo', 'sheet'];
+type Tool = 'graph' | 'calc' | 'geo' | 'sheet' | 'projects';
+const TOOLS: Tool[] = ['graph', 'calc', 'geo', 'sheet', 'projects'];
+const PROJECT_KEY = 'curvelet.project.current';
 const TOOL_KEY = 'calculator.tool.v1';
 
 export function App() {
@@ -206,7 +211,7 @@ export function App() {
   const cs = CALC[lang];
   const gs = GEO[lang];
   const fls = FILES[lang];
-  const [dialog, setDialog] = useState<'settings' | 'files' | null>(null);
+  const [dialog, setDialog] = useState<'settings' | null>(null);
   // the worksheet's name, for saving and file names
   const [docName, setDocName] = useState(() => {
     try {
@@ -236,7 +241,10 @@ export function App() {
   });
   const modeRef = useRef(mode);
   modeRef.current = mode;
+  /** the tool the project was last worked in (the Projects tab isn't one) */
+  const lastTool = useRef<ProjectTool>(mode === 'projects' ? 'graph' : mode);
   const setMode = (m: Tool) => {
+    if (m !== 'projects') lastTool.current = m;
     setModeState(m);
     try {
       localStorage.setItem(TOOL_KEY, m);
@@ -445,6 +453,174 @@ export function App() {
     setLines(next);
   };
 
+  // ---- projects: the open one saves itself once it has been saved
+  const [projectId, setProjectIdState] = useState<string | null>(() => {
+    try {
+      return localStorage.getItem(PROJECT_KEY);
+    } catch {
+      return null;
+    }
+  });
+  const projectIdRef = useRef(projectId);
+  const setProjectId = (id: string | null) => {
+    projectIdRef.current = id;
+    setProjectIdState(id);
+    try {
+      if (id) localStorage.setItem(PROJECT_KEY, id);
+      else localStorage.removeItem(PROJECT_KEY);
+    } catch {
+      // remembered for this visit only
+    }
+  };
+  const [saveStatus, setSaveStatus] = useState<SaveStatus>(projectId ? 'saved' : 'unsaved');
+  const [projectsVersion, setProjectsVersion] = useState(0);
+  /** bumps to remount the graph and the board after a project opens */
+  const [docRev, setDocRev] = useState(0);
+  /** edits made while a project is being opened are the opening, not the user's */
+  // the first moments after loading are the app settling (the engine, sliders), not edits
+  const quietUntil = useRef(Date.now() + 2000);
+  const snapshot = (): ProjectData => {
+    const read = (key: string) => {
+      try {
+        return JSON.parse(localStorage.getItem(key) ?? 'null') as unknown;
+      } catch {
+        return null;
+      }
+    };
+    const pictures = read(PICTURES_KEY);
+    return {
+      name: docName,
+      lines: linesRef.current.filter(hasContent).map(lineData),
+      geo: read(GEO_KEY),
+      pictures: Array.isArray(pictures) ? pictures : [],
+      figure: { grid: figure.grid, piTicks: figure.piTicks, pointLabels: figure.pointLabels, axes: figure.axes },
+      settings,
+      sheet,
+      tool: modeRef.current === 'projects' ? lastTool.current : modeRef.current,
+    };
+  };
+  const saveProject = async (copy = false): Promise<Project | null> => {
+    const data = snapshot();
+    const list = await listProjects().catch(() => [] as Project[]);
+    const old = copy ? undefined : list.find((p) => p.id === projectIdRef.current);
+    const wanted = data.name.trim() || fls.untitled;
+    const name = old ? wanted : freeName(wanted, list.map((p) => p.name));
+    const view = modeRef.current;
+    const thumb = (view === 'geo' ? geoThumb(data.geo) : view === 'graph' ? graphThumb() : null) ?? old?.thumb ?? geoThumb(data.geo) ?? undefined;
+    const p: Project = { ...data, name, id: old?.id ?? newId(), created: old?.created ?? Date.now(), updated: Date.now(), ...(thumb ? { thumb } : {}) };
+    try {
+      await putProject(p);
+    } catch {
+      setSaveStatus('failed');
+      return null;
+    }
+    if (!copy) {
+      setProjectId(p.id);
+      if (name !== data.name) {
+        quietUntil.current = Date.now() + 500;
+        setDocName(name);
+      }
+      setSaveStatus('saved');
+    }
+    setProjectsVersion((v) => v + 1);
+    return p;
+  };
+  const saveRef = useRef(saveProject);
+  saveRef.current = saveProject;
+  /** puts a project's contents in every tool; `id` null opens it unsaved */
+  const applyProject = (p: ProjectData, id: string | null) => {
+    quietUntil.current = Date.now() + 800;
+    replaceAll(p.lines);
+    try {
+      if (p.geo) localStorage.setItem(GEO_KEY, JSON.stringify(p.geo));
+      else localStorage.removeItem(GEO_KEY);
+      localStorage.setItem(PICTURES_KEY, JSON.stringify(p.pictures ?? []));
+    } catch {
+      // too big for this browser's storage: the board or pictures stay as they were
+    }
+    const f = p.figure ?? {};
+    setFigure((cur) => ({
+      ...cur,
+      grid: f.grid === 'polar' || f.grid === 'none' ? f.grid : undefined,
+      piTicks: f.piTicks === true ? true : undefined,
+      pointLabels: f.pointLabels === false ? false : undefined,
+      axes: f.axes !== false,
+    }));
+    if (p.settings) changeSettings(p.settings);
+    setSheet(p.sheet ? { ...defaultWorksheet(lang), ...(p.sheet as Partial<Worksheet>) } : defaultWorksheet(lang));
+    setDocName(p.name);
+    setProjectId(id);
+    setSaveStatus(id ? 'saved' : 'unsaved');
+    setSelected(null);
+    setDocRev((r) => r + 1);
+    setMode(p.tool ?? 'graph');
+  };
+  const openProject = async (p: Project) => {
+    if (projectIdRef.current && projectIdRef.current !== p.id && saveStatus !== 'saved') await saveProject();
+    const fresh = (await getProject(p.id)) ?? p;
+    applyProject(fresh, fresh.id);
+    setNotice({ text: fls.openedProject(fresh.name) });
+  };
+  const newProject = async () => {
+    if (projectIdRef.current && saveStatus !== 'saved') await saveProject();
+    applyProject({ name: '', lines: [], geo: null, pictures: [], figure: {}, tool: 'graph' }, null);
+    setNotice({ text: fls.newStarted });
+  };
+  const importProject = async (file: File) => {
+    const data = readProjectFile(await file.text(), file.name.replace(/(\.curvelet|\.calc\.json|\.json)$/i, ''));
+    if (!data) return setNotice({ text: fls.openFailed });
+    if (projectIdRef.current && saveStatus !== 'saved') await saveProject();
+    const list = await listProjects().catch(() => [] as Project[]);
+    const p: Project = { ...data, name: freeName(data.name, list.map((x) => x.name)), id: newId(), created: Date.now(), updated: Date.now() };
+    const kept = await putProject(p).then(() => true).catch(() => false);
+    applyProject(p, kept ? p.id : null);
+    setProjectsVersion((v) => v + 1);
+    setNotice({ text: fls.openedProject(p.name) });
+  };
+  const exportProject = () => {
+    const data = snapshot();
+    downloadText(projectFile({ ...data, thumb: graphThumb() ?? geoThumb(data.geo) ?? undefined }), projectFileName(data.name || fls.untitled));
+  };
+
+  // edits: the lines, the graph look, settings, the study sheet, the name, and the tools' own documents
+  const autosave = useRef<number | undefined>(undefined);
+  const markEdited = () => {
+    if (Date.now() < quietUntil.current) return;
+    if (!projectIdRef.current) return setSaveStatus('unsaved');
+    setSaveStatus('saving');
+    clearTimeout(autosave.current);
+    autosave.current = window.setTimeout(() => void saveRef.current(), 1200);
+  };
+  const markRef = useRef(markEdited);
+  markRef.current = markEdited;
+  useEffect(() => {
+    const on = () => markRef.current();
+    window.addEventListener(EDIT_EVENT, on);
+    return () => window.removeEventListener(EDIT_EVENT, on);
+  }, []);
+  const firstEdit = useRef(true);
+  useEffect(() => {
+    if (firstEdit.current) {
+      firstEdit.current = false;
+      return;
+    }
+    markRef.current();
+  }, [lines, figure.grid, figure.piTicks, figure.pointLabels, figure.axes, settings, sheet, docName]);
+  // ⌘S / Ctrl+S saves the project, wherever the focus is
+  useEffect(() => {
+    const onKey = (e: globalThis.KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && !e.altKey && e.key.toLowerCase() === 's') {
+        e.preventDefault();
+        clearTimeout(autosave.current);
+        void saveRef.current().then((p) => p && setNotice({ text: fls.savedAs(p.name) }));
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+    // fls is read when the key is pressed; a stale language only changes the notice
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lang]);
+
   // a shared link (#w=…) opens its worksheet, on page load or when pasted into
   // the address bar of an open page; the current worksheet is kept to bring back
   useEffect(() => {
@@ -472,7 +648,7 @@ export function App() {
   const share = async () => {
     const base = shareBase(isNativeApp());
     // an app built without a web address can't make a link; a file does the same job
-    if (!base) return setNotice({ text: t.shareNeedsWeb, action: { label: t.shareAsFile, run: () => setDialog('files') } });
+    if (!base) return setNotice({ text: t.shareNeedsWeb, action: { label: t.shareAsFile, run: () => setMode('projects') } });
     const kept = lines.filter(hasContent);
     const url = shareUrl(await encodeShared({ items: kept.map(lineData), settings, ...(docName.trim() ? { name: docName.trim() } : {}) }), base);
     try {
@@ -713,11 +889,16 @@ export function App() {
             { value: 'calc', label: cs.calculator },
             { value: 'geo', label: cs.geometry },
             { value: 'sheet', label: cs.worksheet },
+            { value: 'projects', label: fls.projects },
           ]}
           onChange={setMode}
         />
         <div className="topbar__tools">
-          <button type="button" className="icon-btn" aria-label={fls.files} title={fls.files} onClick={() => setDialog('files')}>
+          <button type="button" className="btn btn--quiet topbar__project" title={`${fls.projects}: ${docName.trim() || fls.untitled}`} onClick={() => setMode('projects')}>
+            <span className="topbar__project-name">{docName.trim() || fls.untitled}</span>
+            {saveStatus !== 'saved' && <span className="topbar__project-state">{saveStatus === 'saving' ? fls.statusSaving : fls.statusUnsaved}</span>}
+          </button>
+          <button type="button" className="icon-btn" aria-label={fls.projects} title={fls.projects} onClick={() => setMode('projects')}>
             <svg viewBox="0 0 20 20" width="18" height="18" aria-hidden="true">
               <path d="M2.5 5.5a1.5 1.5 0 011.5-1.5h3.6l1.8 2H16a1.5 1.5 0 011.5 1.5v7A1.5 1.5 0 0116 16H4a1.5 1.5 0 01-1.5-1.5z" stroke="currentColor" strokeWidth="1.5" fill="none" strokeLinejoin="round" />
             </svg>
@@ -816,7 +997,28 @@ export function App() {
       )}
 
       <Suspense fallback={<main className="workspace workspace--tool" aria-busy="true" />}>
-      {mode === 'calc' ? (
+      {mode === 'projects' ? (
+        <ProjectsView
+          s={fls}
+          currentId={projectId}
+          name={docName}
+          onName={setDocName}
+          status={saveStatus}
+          version={projectsVersion}
+          hasContent={linesRef.current.some(hasContent) || Boolean(localStorage.getItem(PICTURES_KEY)?.length && localStorage.getItem(PICTURES_KEY) !== '[]')}
+          onNew={() => void newProject()}
+          onSave={() => void saveProject().then((p) => p && setNotice({ text: fls.savedAs(p.name) }))}
+          onSaveCopy={() => void saveProject(true).then((p) => p && setNotice({ text: fls.copied(p.name) }))}
+          onExport={exportProject}
+          onImport={(f) => void importProject(f)}
+          onOpen={(p) => void openProject(p)}
+          onNotice={(text) => setNotice({ text })}
+          onForget={() => {
+            setProjectId(null);
+            setSaveStatus('unsaved');
+          }}
+        />
+      ) : mode === 'calc' ? (
         <main className="workspace workspace--tool">
           <CalculatorTool
             s={cs}
@@ -834,6 +1036,7 @@ export function App() {
       ) : mode === 'geo' ? (
         <main className="workspace workspace--tool">
           <GeometryTool
+            key={docRev}
             s={gs}
             onSendToGraph={(sources) => {
               insertLines(sources, gs.objects);
@@ -1059,6 +1262,7 @@ export function App() {
 
         <section className="stage-area" aria-label={t.graph}>
           <GraphPanel
+            key={docRev}
             graphables={graphables}
             seriesOf={seriesOf}
             look={lookOf}
@@ -1099,21 +1303,6 @@ export function App() {
         onSettings={changeSettings}
         keypad={keypad}
         onKeypad={setKeypad}
-      />
-      <FilesDialog
-        open={dialog === 'files'}
-        onClose={() => setDialog(null)}
-        s={fls}
-        name={docName}
-        onRename={setDocName}
-        current={() => linesRef.current.filter(hasContent).map(lineData)}
-        onOpen={(doc, note) => {
-          replaceAll(doc.lines);
-          setDocName(doc.name);
-          setMode('graph');
-          setNotice({ text: note });
-        }}
-        onNotice={(text) => setNotice({ text })}
       />
     </div>
   );
