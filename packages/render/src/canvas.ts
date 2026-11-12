@@ -20,7 +20,8 @@ function line(ctx: CanvasRenderingContext2D, pts: number[], close = false) {
 const BASELINE = { top: 'top', middle: 'middle', bottom: 'alphabetic' } as const;
 
 /** Draws a scene on a canvas whose context is already scaled for the device pixel ratio. */
-export function drawScene(ctx: CanvasRenderingContext2D, scene: Scene, theme: DrawTheme): void {
+/** `underlay` draws under everything but the background (the graph's pictures) */
+export function drawScene(ctx: CanvasRenderingContext2D, scene: Scene, theme: DrawTheme, underlay?: (ctx: CanvasRenderingContext2D) => void): void {
   const exam = scene.style === 'exam';
   const color = (series: number) => theme.curves[series % theme.curves.length]!;
   ctx.save();
@@ -29,6 +30,7 @@ export function drawScene(ctx: CanvasRenderingContext2D, scene: Scene, theme: Dr
     ctx.fillStyle = theme.background;
     ctx.fillRect(0, 0, scene.width, scene.height);
   }
+  underlay?.(ctx);
   if (scene.image && typeof document !== 'undefined') {
     // the image is drawn at its own size off screen, then scaled up to the view
     const { width, height, step, data } = scene.image;
@@ -109,10 +111,19 @@ export function drawScene(ctx: CanvasRenderingContext2D, scene: Scene, theme: Dr
   ctx.setLineDash([]);
 
   for (const p of scene.points) {
-    ctx.fillStyle = exam ? theme.ink : (p.color ?? (p.colored ? color(p.series) : theme.ink));
+    const ink = exam ? theme.ink : (p.color ?? (p.colored ? color(p.series) : theme.ink));
     ctx.beginPath();
-    ctx.arc(p.x, p.y, exam ? 2.6 : 4.5, 0, Math.PI * 2);
-    ctx.fill();
+    ctx.arc(p.x, p.y, exam ? (p.open ? 3 : 2.6) : 4.5, 0, Math.PI * 2);
+    if (p.open) {
+      ctx.fillStyle = theme.background ?? theme.halo ?? '#ffffff';
+      ctx.fill();
+      ctx.strokeStyle = ink;
+      ctx.lineWidth = exam ? 1.2 : 2;
+      ctx.stroke();
+    } else {
+      ctx.fillStyle = ink;
+      ctx.fill();
+    }
   }
 
   for (const l of scene.labels) {

@@ -62,15 +62,18 @@ export function sceneToPdf(scene: Scene, theme: DrawTheme, rgb: (css: string) =>
     stroke(exam || c.ink ? theme.ink : (c.color ?? color(c.series)), width, path, dashPattern(c, exam, width).join(' '));
   }
   for (const p of scene.points) {
-    const r = exam ? 2.6 : 4.5;
+    const r = exam ? (p.open ? 3 : 2.6) : 4.5;
     const k = 0.5523 * r;
     const [x, y] = [p.x, p.y];
+    const ink = col(exam ? theme.ink : (p.color ?? (p.colored ? color(p.series) : theme.ink)));
+    // a hollow dot: paper inside, ring in the curve's colour
+    const paint = p.open ? `${col(theme.background ?? theme.halo ?? '#ffffff')} rg ${ink} RG ${n(exam ? 1.2 : 2)} w ` : `${ink} rg `;
     ops.push(
-      `${col(exam ? theme.ink : (p.color ?? (p.colored ? color(p.series) : theme.ink)))} rg ${n(x + r)} ${n(y)} m ` +
+      `${paint}${n(x + r)} ${n(y)} m ` +
         `${n(x + r)} ${n(y + k)} ${n(x + k)} ${n(y + r)} ${n(x)} ${n(y + r)} c ` +
         `${n(x - k)} ${n(y + r)} ${n(x - r)} ${n(y + k)} ${n(x - r)} ${n(y)} c ` +
         `${n(x - r)} ${n(y - k)} ${n(x - k)} ${n(y - r)} ${n(x)} ${n(y - r)} c ` +
-        `${n(x + k)} ${n(y - r)} ${n(x + r)} ${n(y - k)} ${n(x + r)} ${n(y)} c f`,
+        `${n(x + k)} ${n(y - r)} ${n(x + r)} ${n(y - k)} ${n(x + r)} ${n(y)} c ${p.open ? 'b' : 'f'}`,
     );
   }
 

@@ -37,7 +37,8 @@ export interface Styled {
 }
 
 export type GeoObject = (
-  | { id: string; kind: 'point'; name: string; x: number; y: number }
+  /** `anchor`: a pen path's anchor, shown only while its path is being drawn or edited */
+  | { id: string; kind: 'point'; name: string; x: number; y: number; anchor?: boolean }
   | { id: string; kind: 'midpoint'; name: string; a: string; b: string }
   /** where two objects cross; `which` picks between two crossings */
   | { id: string; kind: 'intersection'; name: string; p: string; q: string; which: 0 | 1 }
@@ -60,10 +61,23 @@ export type GeoObject = (
   /** the angle a-vertex-c, measured */
   | { id: string; kind: 'angle'; name: string; a: string; vertex: string; c: string }
   | { id: string; kind: 'text'; name: string; x: number; y: number; text: string }
+  /** a picture: centre (x, y), size w × h in coordinate units, opacity 0 to 1 */
+  | { id: string; kind: 'image'; name: string; x: number; y: number; w: number; h: number; src: string; opacity: number }
+  /**
+   * a pen path: anchors (free points) joined by cubic Bézier pieces; each anchor's
+   * handles are offsets from it, `out` towards the next anchor, `in` from the one before
+   */
+  | { id: string; kind: 'path'; name: string; nodes: PathNode[]; closed: boolean }
   /** an ellipse around a free centre, its radii along axes turned by `rot` degrees */
   | { id: string; kind: 'ellipse'; name: string; center: string; rx: number; ry: number; rot: number }
 ) &
   Styled;
+
+export interface PathNode {
+  p: string;
+  in?: Pt;
+  out?: Pt;
+}
 
 export type GeoKind = GeoObject['kind'];
 export interface Pt {
@@ -78,9 +92,12 @@ export type Shape =
   | { type: 'line'; a: Pt; b: Pt; extent: 'segment' | 'line' | 'ray' }
   | { type: 'circle'; c: Pt; r: number }
   | { type: 'ellipse'; c: Pt; rx: number; ry: number; rot: number }
+  /** a pen path, sampled finely (pts), with the Bézier control points it was made from */
+  | { type: 'path'; pts: Pt[]; controls: Pt[]; closed: boolean }
   | { type: 'polygon'; pts: Pt[] }
   | { type: 'angle'; a: Pt; v: Pt; c: Pt; degrees: number }
-  | { type: 'text'; at: Pt; text: string };
+  | { type: 'text'; at: Pt; text: string }
+  | { type: 'image'; c: Pt; w: number; h: number; src: string; opacity: number };
 
 const dist = (p: Pt, q: Pt) => Math.hypot(q.x - p.x, q.y - p.y);
 
@@ -145,6 +162,9 @@ export function resolve(objects: GeoObject[]): Map<string, Shape> {
       case 'text':
         shape = { type: 'text', at: { x: o.x, y: o.y }, text: o.text };
         break;
+      case 'image':
+        shape = { type: 'image', c: { x: o.x, y: o.y }, w: o.w, h: o.h, src: o.src, opacity: o.opacity };
+        break;
       case 'midpoint': {
         const [a, b] = [pt(o.a), pt(o.b)];
         if (a && b) shape = { type: 'point', at: { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 }, free: false };
@@ -204,6 +224,11 @@ export function resolve(objects: GeoObject[]): Map<string, Shape> {
       case 'circle': {
         const [c, p] = [pt(o.center), pt(o.through)];
         if (c && p && dist(c, p) > 1e-12) shape = { type: 'circle', c, r: dist(c, p) };
+        break;
+      }
+      case 'path': {
+        const at = o.nodes.map((n) => pt(n.p));
+        if (at.length >= 2 && at.every(Boolean)) shape = pathShape(o.nodes, at as Pt[], o.closed);
         break;
       }
       case 'ellipse': {
@@ -304,6 +329,7 @@ export function toLines(objects: GeoObject[]): string[] {
     if (!s) continue;
     switch (o.kind) {
       case 'point':
+        if (o.anchor) break;
         lines.push(`${o.name} = ${pair({ x: o.x, y: o.y })}`);
         break;
       case 'midpoint':
@@ -337,6 +363,9 @@ export function toLines(objects: GeoObject[]): string[] {
       case 'polygon':
         lines.push(`polygon(${o.pts.map(nm).join(', ')})`);
         break;
+      case 'path':
+        if (s.type === 'path') lines.push(`bezier(${s.controls.map(pair).join(', ')})`);
+        break;
       case 'ellipse':
         if (s.type === 'ellipse') {
           const t = (s.rot * Math.PI) / 180;
@@ -352,6 +381,7 @@ export function toLines(objects: GeoObject[]): string[] {
         break;
       case 'angle':
       case 'text':
+      case 'image':
         break;
     }
   }
@@ -375,6 +405,7 @@ export function refs(o: GeoObject): string[] {
   switch (o.kind) {
     case 'point':
     case 'text':
+    case 'image':
       return [];
     case 'midpoint':
     case 'segment':
@@ -400,6 +431,8 @@ export function refs(o: GeoObject): string[] {
       return o.pts;
     case 'vertex':
       return [o.poly];
+    case 'path':
+      return o.nodes.map((n) => n.p);
     case 'ellipse':
       return [o.center];
     case 'angle':
@@ -424,7 +457,7 @@ export function freeRoots(objects: GeoObject[], ids: Iterable<string>): string[]
     seen.add(id);
     const o = byId.get(id);
     if (!o) return;
-    if (o.kind === 'point' || o.kind === 'text' || o.kind === 'ellipse') out.add(id);
+    if (o.kind === 'point' || o.kind === 'text' || o.kind === 'ellipse' || o.kind === 'image') out.add(id);
     refs(o).forEach(walk);
   };
   for (const id of ids) walk(id);
@@ -437,7 +470,7 @@ export function freeRoots(objects: GeoObject[], ids: Iterable<string>): string[]
  * intersection, a perpendicular) follow their parents instead.
  */
 export function draggable(o: GeoObject): boolean {
-  return ['point', 'text', 'segment', 'line', 'ray', 'circle', 'compass', 'polygon', 'regular', 'ellipse'].includes(o.kind);
+  return ['point', 'text', 'segment', 'line', 'ray', 'circle', 'compass', 'polygon', 'regular', 'ellipse', 'path', 'image'].includes(o.kind);
 }
 
 /** the objects and every object they are built from, in document order */
@@ -467,6 +500,7 @@ export function cloneObjects(list: GeoObject[], into: GeoObject[], by: Pt, newId
       if (typeof copy[key] === 'string' && map.has(copy[key] as string)) copy[key] = r(copy[key] as string);
     }
     if (o.kind === 'polygon') (copy as { pts: string[] }).pts = o.pts.map(r);
+    if (o.kind === 'path') (copy as { nodes: PathNode[] }).nodes = o.nodes.map((n) => ({ ...n, p: r(n.p) }));
     if (copy.kind === 'point' || copy.kind === 'text') {
       copy.x += by.x;
       copy.y += by.y;
@@ -485,4 +519,30 @@ export function cornerIds(o: GeoObject, objects: GeoObject[]): string[] {
   if (o.kind !== 'regular') return [];
   const built = objects.filter((v): v is Extract<GeoObject, { kind: 'vertex' }> => v.kind === 'vertex' && v.poly === o.id).sort((x, y) => x.k - y.k);
   return [o.a, o.b, ...built.map((v) => v.id)];
+}
+
+/** a pen path's control points P0, C1, C2, P1, … and its outline sampled finely */
+export function pathShape(nodes: PathNode[], at: Pt[], closed: boolean): Extract<Shape, { type: 'path' }> {
+  const controls: Pt[] = [at[0]!];
+  const piece = (k: number, j: number) => {
+    const [a, b] = [at[k]!, at[j]!];
+    const out = nodes[k]!.out ?? { x: 0, y: 0 };
+    const inn = nodes[j]!.in ?? { x: 0, y: 0 };
+    controls.push({ x: a.x + out.x, y: a.y + out.y }, { x: b.x + inn.x, y: b.y + inn.y }, b);
+  };
+  for (let k = 0; k + 1 < at.length; k++) piece(k, k + 1);
+  if (closed && at.length > 2) piece(at.length - 1, 0);
+  const pts: Pt[] = [controls[0]!];
+  for (let k = 0; k + 3 < controls.length; k += 3) {
+    const [p0, c1, c2, p1] = [controls[k]!, controls[k + 1]!, controls[k + 2]!, controls[k + 3]!];
+    for (let j = 1; j <= 40; j++) {
+      const t = j / 40;
+      const u = 1 - t;
+      pts.push({
+        x: u * u * u * p0.x + 3 * u * u * t * c1.x + 3 * u * t * t * c2.x + t * t * t * p1.x,
+        y: u * u * u * p0.y + 3 * u * u * t * c1.y + 3 * u * t * t * c2.y + t * t * t * p1.y,
+      });
+    }
+  }
+  return { type: 'path', pts, controls, closed };
 }

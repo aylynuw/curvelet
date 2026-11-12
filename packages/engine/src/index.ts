@@ -22,3 +22,4 @@ export {
   type IntegralStep,
   type SymbolicResolver,
 } from './symbolic';
+export { caseConditions, findEdges, type Edges } from './edges';

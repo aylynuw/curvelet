@@ -31,6 +31,7 @@ import { exportPdf, exportPng, exportSvg, exportTikz, graphSvg, readTheme } from
 import { exportGif, exportVideo, videoType, type Sweep } from './animate';
 import { MathText } from '../components/MathText';
 import { Menu, type MenuItem } from './Menu';
+import { decodedImage, pickPicture, pictureFile, readPicture, type Picture } from '../pictures';
 import { GraphSettings } from './GraphSettings';
 import { fitRange } from './fit';
 import { FIGURE_TEMPLATES, type FigureTemplate, type Range } from '../teach/templates';
@@ -61,6 +62,28 @@ const GRAPH_EXAMPLES = ['y = x^2 - 2x', 'x^2 + y^2 = 9', 'r = 1 + cos(θ)', '(co
 
 /** A movement smaller than this between press and release is a click, not a drag. */
 const CLICK_SLOP = 4;
+
+/** an image on the plane: centre, size in plane units, opacity 0 to 1 */
+export interface GraphPicture {
+  id: string;
+  src: string;
+  cx: number;
+  cy: number;
+  w: number;
+  h: number;
+  opacity: number;
+}
+const PICTURES_KEY = 'curvelet.graph.pictures';
+const loadPictures = (): GraphPicture[] => {
+  try {
+    const v = JSON.parse(localStorage.getItem(PICTURES_KEY) ?? '[]');
+    return Array.isArray(v) ? v : [];
+  } catch {
+    return [];
+  }
+};
+type Corner = 'nw' | 'ne' | 'se' | 'sw';
+const nice = (v: number) => Number(v.toPrecision(4));
 
 const at = (p: Poi) => `(${coordinate(p.x)}, ${coordinate(p.y)})`;
 
@@ -204,6 +227,103 @@ export function GraphPanel({
   }, [fit, fitDone, size]);
   // zoom box: Shift+drag, or drag after pressing the zoom-box button
   const [boxMode, setBoxMode] = useState(false);
+  // pictures under the curves, like Desmos images: one selected at a time
+  const [pictures, setPictures] = useState<GraphPicture[]>(loadPictures);
+  const [picSel, setPicSel] = useState<string | null>(null);
+  const [picRatio, setPicRatio] = useState(true);
+  const [picsReady, picLoaded] = useReducer((n: number) => n + 1, 0);
+  const picDrag = useRef<{ id: string; mode: 'move' | Corner; start: [number, number]; orig: GraphPicture } | null>(null);
+  useEffect(() => {
+    try {
+      localStorage.setItem(PICTURES_KEY, JSON.stringify(pictures));
+    } catch {
+      // too big to keep: it stays for this visit
+    }
+  }, [pictures]);
+  const picture = pictures.find((p) => p.id === picSel) ?? null;
+  const patchPicture = (id: string, patch: Partial<GraphPicture>) => setPictures((ps) => ps.map((p) => (p.id === id ? { ...p, ...patch } : p)));
+  const placePicture = (pic: Picture, at?: [number, number]) => {
+    const vw = (size.width || 800) / view.scale;
+    const vh = (size.height || 600) / view.scale;
+    const aspect = pic.w / pic.h;
+    const w = Math.min(vw * 0.6, vh * 0.6 * aspect);
+    const id = Math.random().toString(36).slice(2, 10);
+    setPictures((ps) => [...ps, { id, src: pic.src, cx: nice(at?.[0] ?? view.cx), cy: nice(at?.[1] ?? view.cy), w: nice(w), h: nice(w / aspect), opacity: 1 }]);
+    setPicSel(id);
+    onSelect(null);
+  };
+  const addPicture = async () => {
+    const pic = await pickPicture();
+    if (pic) placePicture(pic);
+  };
+  const pictureAt = (px: number, py: number) => {
+    const [x, y] = planeAt(viewport, px, py);
+    for (let k = pictures.length - 1; k >= 0; k--) {
+      const p = pictures[k]!;
+      if (Math.abs(x - p.cx) <= p.w / 2 && Math.abs(y - p.cy) <= p.h / 2) return p.id;
+    }
+    return null;
+  };
+  const onPicDown = (e: PointerEvent<HTMLElement>, mode: 'move' | Corner) => {
+    if (!picture || e.button !== 0) return;
+    e.stopPropagation();
+    e.currentTarget.setPointerCapture(e.pointerId);
+    const r = canvasRef.current!.getBoundingClientRect();
+    picDrag.current = { id: picture.id, mode, start: planeAt(viewport, e.clientX - r.left, e.clientY - r.top) as [number, number], orig: picture };
+  };
+  const onPicMove = (e: PointerEvent<HTMLElement>) => {
+    const d = picDrag.current;
+    if (!d) return;
+    const r = canvasRef.current!.getBoundingClientRect();
+    const [x, y] = planeAt(viewport, e.clientX - r.left, e.clientY - r.top);
+    const o = d.orig;
+    if (d.mode === 'move') return patchPicture(d.id, { cx: nice(o.cx + x - d.start[0]), cy: nice(o.cy + y - d.start[1]) });
+    // the opposite corner stays put
+    const ax = d.mode.includes('w') ? o.cx + o.w / 2 : o.cx - o.w / 2;
+    const ay = d.mode.includes('n') ? o.cy - o.h / 2 : o.cy + o.h / 2;
+    const min = 4 / view.scale;
+    let w = Math.max(min, Math.abs(x - ax));
+    let h = Math.max(min, Math.abs(y - ay));
+    if (e.shiftKey) {
+      const k = Math.max(w / o.w, h / o.h);
+      [w, h] = [o.w * k, o.h * k];
+    }
+    const sx = d.mode.includes('w') ? -1 : 1;
+    const sy = d.mode.includes('n') ? 1 : -1;
+    patchPicture(d.id, { w: nice(w), h: nice(h), cx: nice(ax + (sx * w) / 2), cy: nice(ay + (sy * h) / 2) });
+  };
+  const onPicUp = () => {
+    picDrag.current = null;
+  };
+  const onDropPicture = async (e: React.DragEvent) => {
+    const file = pictureFile(e.dataTransfer);
+    if (!file) return;
+    e.preventDefault();
+    const pic = await readPicture(file);
+    if (!pic) return;
+    const r = canvasRef.current!.getBoundingClientRect();
+    placePicture(pic, planeAt(viewport, e.clientX - r.left, e.clientY - r.top) as [number, number]);
+  };
+  // the pen: anchors in plane coordinates, each with one handle (the other mirrors it)
+  const [penMode, setPenMode] = useState(false);
+  const [pen, setPen] = useState<{ x: number; y: number; out?: { x: number; y: number } }[]>([]);
+  const penDrag = useRef<{ k: number; px: number; py: number; moved: boolean } | null>(null);
+  const finishPen = (closed: boolean) => {
+    const nodes = pen;
+    setPen([]);
+    if (nodes.length < 2) return;
+    const f = (v: number) => String(Number(v.toFixed(2)));
+    const pt = (x: number, y: number) => `(${f(x)}, ${f(y)})`;
+    const parts = [pt(nodes[0]!.x, nodes[0]!.y)];
+    const piece = (a: (typeof nodes)[number], b: (typeof nodes)[number]) => {
+      const ao = a.out ?? { x: 0, y: 0 };
+      const bo = b.out ?? { x: 0, y: 0 };
+      parts.push(pt(a.x + ao.x, a.y + ao.y), pt(b.x - bo.x, b.y - bo.y), pt(b.x, b.y));
+    };
+    for (let k = 0; k + 1 < nodes.length; k++) piece(nodes[k]!, nodes[k + 1]!);
+    if (closed) piece(nodes[nodes.length - 1]!, nodes[0]!);
+    onInsert(`bezier(${parts.join(', ')})`);
+  };
   const [box, setBox] = useState<{ x0: number; y0: number; x1: number; y1: number } | null>(null);
   const fitCurves = () => {
     const r = fitRange(drawn, xmin(viewport), xmax(viewport), ymin(viewport), ymax(viewport));
@@ -240,7 +360,16 @@ export function GraphPanel({
     const scene = buildScene(drawn, viewport, sceneOpts);
     sceneRef.current = scene;
     const theme = exam ? EXAM_THEME : readTheme(wrapRef.current!);
-    drawScene(ctx, scene, theme);
+    drawScene(ctx, scene, theme, (c) => {
+      for (const p of pictures) {
+        const img = decodedImage(p.src, picLoaded);
+        if (!img) continue;
+        c.save();
+        c.globalAlpha = Math.max(0, Math.min(1, p.opacity));
+        c.drawImage(img, toPx(viewport, p.cx - p.w / 2), toPy(viewport, p.cy + p.h / 2), p.w * viewport.scale, p.h * viewport.scale);
+        c.restore();
+      }
+    });
 
     // the selected curve, drawn again thicker, with its points of interest
     const sel = scene.curves.find((c) => c.id === selected);
@@ -281,7 +410,7 @@ export function GraphPanel({
       ctx.restore();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [drawn, view, size, figure, themeVersion, seriesOf, selected, pois, trace, look]);
+  }, [drawn, view, size, figure, themeVersion, seriesOf, selected, pois, trace, look, pictures, picsReady]);
 
   // wheel zoom needs a non-passive listener to keep the page from scrolling
   useEffect(() => {
@@ -314,6 +443,19 @@ export function GraphPanel({
       // capture is a convenience for drags that leave the canvas; carry on without it
     }
     const p = local(e);
+    if (penMode && pointers.current.size === 0 && e.button === 0 && e.isPrimary) {
+      const first = pen[0];
+      if (first && pen.length >= 2 && Math.hypot(toPx(viewport, first.x) - p.x, toPy(viewport, first.y) - p.y) <= (e.pointerType === 'touch' ? 22 : 10)) {
+        finishPen(true);
+        return;
+      }
+      // anchors land on the minor grid; Shift for a finer step
+      const step = gridStep(viewport.scale).minor / (e.shiftKey ? 10 : 2);
+      const [x, y] = planeAt(viewport, p.x, p.y).map((c) => Number((Math.round(c / step) * step).toPrecision(12))) as [number, number];
+      penDrag.current = { k: pen.length, px: p.x, py: p.y, moved: false };
+      setPen((ns) => [...ns, { x, y }]);
+      return;
+    }
     if ((boxMode || e.shiftKey) && pointers.current.size === 0 && e.button === 0) {
       setBox({ x0: p.x, y0: p.y, x1: p.x, y1: p.y });
       return;
@@ -333,6 +475,15 @@ export function GraphPanel({
       setBox({ ...box, x1: p.x, y1: p.y });
       return;
     }
+    const drag = penDrag.current;
+    if (drag) {
+      if (!drag.moved && Math.hypot(p.x - drag.px, p.y - drag.py) < CLICK_SLOP) return;
+      drag.moved = true;
+      const [wx, wy] = planeAt(viewport, p.x, p.y);
+      setPen((ns) => ns.map((n, k) => (k === drag.k ? { ...n, out: { x: wx - n.x, y: wy - n.y } } : n)));
+      return;
+    }
+    if (penMode && e.pointerType === 'mouse') setHover({ px: p.x, py: p.y });
     const map = pointers.current;
     const prev = map.get(e.pointerId);
     if (!prev) {
@@ -361,6 +512,10 @@ export function GraphPanel({
     map.set(e.pointerId, p);
   };
   const onPointerEnd = (e: PointerEvent<HTMLCanvasElement>) => {
+    if (penDrag.current) {
+      penDrag.current = null;
+      return;
+    }
     if (box) {
       setBox(null);
       setBoxMode(false);
@@ -389,7 +544,9 @@ export function GraphPanel({
       const [x, y] = planeAt(viewport, p.x, p.y).map((c) => Number((Math.round(c / step) * step).toPrecision(10))) as [number, number];
       return onAddSeed(selectedGraph.id, x, y);
     }
-    onSelect(hit);
+    const pic = hit === null ? pictureAt(p.x, p.y) : null;
+    setPicSel(pic);
+    onSelect(pic ? null : hit);
     if (e.pointerType === 'touch') setHover({ px: p.x, py: p.y });
   };
 
@@ -409,7 +566,16 @@ export function GraphPanel({
     } else if (e.key === '0') {
       e.preventDefault();
       setView(DEFAULT_VIEW);
+    } else if ((e.key === 'Enter' || e.key === 'Escape') && pen.length) {
+      e.preventDefault();
+      finishPen(false);
+    } else if ((e.key === 'Delete' || e.key === 'Backspace') && picSel) {
+      e.preventDefault();
+      setPictures((ps) => ps.filter((p) => p.id !== picSel));
+      setPicSel(null);
     } else if (e.key === 'Escape') {
+      if (penMode) setPenMode(false);
+      setPicSel(null);
       onSelect(null);
     }
   };
@@ -463,6 +629,40 @@ export function GraphPanel({
     </div>
   );
 
+  /** the curve being drawn: its pieces, handles, and the next piece to the cursor */
+  const penOverlay = () => {
+    const X = (x: number) => toPx(viewport, x);
+    const Y = (y: number) => toPy(viewport, y);
+    let d = '';
+    pen.forEach((n, k) => {
+      if (!k) return void (d = `M${X(n.x)},${Y(n.y)}`);
+      const a = pen[k - 1]!;
+      const ao = a.out ?? { x: 0, y: 0 };
+      const no = n.out ?? { x: 0, y: 0 };
+      d += ` C${X(a.x + ao.x)},${Y(a.y + ao.y)} ${X(n.x - no.x)},${Y(n.y - no.y)} ${X(n.x)},${Y(n.y)}`;
+    });
+    const last = pen[pen.length - 1];
+    const next = last && hover && !penDrag.current?.moved ? `M${X(last.x)},${Y(last.y)} C${X(last.x + (last.out?.x ?? 0))},${Y(last.y + (last.out?.y ?? 0))} ${hover.px},${hover.py} ${hover.px},${hover.py}` : '';
+    return (
+      <svg className="graph__pen" width={size.width} height={size.height} aria-hidden="true">
+        {next && <path className="graph__pen-next" d={next} />}
+        {d && <path className="graph__pen-path" d={d} />}
+        {pen.map((n, k) =>
+          n.out ? (
+            <g key={`h${k}`}>
+              <line className="graph__pen-arm" x1={X(n.x - n.out.x)} y1={Y(n.y - n.out.y)} x2={X(n.x + n.out.x)} y2={Y(n.y + n.out.y)} />
+              <circle className="graph__pen-knob" cx={X(n.x + n.out.x)} cy={Y(n.y + n.out.y)} r={3.5} />
+              <circle className="graph__pen-knob" cx={X(n.x - n.out.x)} cy={Y(n.y - n.out.y)} r={3.5} />
+            </g>
+          ) : null,
+        )}
+        {pen.map((n, k) => (
+          <circle key={k} className="graph__pen-anchor" cx={X(n.x)} cy={Y(n.y)} r={k === 0 && pen.length >= 2 ? 6 : 4.5} />
+        ))}
+      </svg>
+    );
+  };
+
   const exportMenu = (items: MenuItem[]) => <Menu label={t.moreExport} listLabel={t.exportLabel} items={items} />;
   const templatesMenu = (
     <Menu
@@ -496,10 +696,18 @@ export function GraphPanel({
 
   return (
     <div className="graph">
-      <div className="graph__stage" ref={wrapRef} data-style={figure.style}>
+      <div
+        className="graph__stage"
+        ref={wrapRef}
+        data-style={figure.style}
+        onDragOver={(e) => {
+          if ([...e.dataTransfer.types].includes('Files')) e.preventDefault();
+        }}
+        onDrop={(e) => void onDropPicture(e)}
+      >
         <canvas
           ref={canvasRef}
-          className={`graph__canvas${boxMode ? ' graph__canvas--box' : ''}`}
+          className={`graph__canvas${boxMode || penMode ? ' graph__canvas--box' : ''}`}
           tabIndex={0}
           role="img"
           aria-label={graphables.length ? t.graphOf(described) : t.graphEmptyLabel}
@@ -515,6 +723,31 @@ export function GraphPanel({
           }}
           onKeyDown={onKey}
         />
+        {picture && !exam && (
+          <div
+            className="gpic"
+            style={{ left: toPx(viewport, picture.cx - picture.w / 2), top: toPy(viewport, picture.cy + picture.h / 2), width: picture.w * viewport.scale, height: picture.h * viewport.scale }}
+            onPointerDown={(e) => onPicDown(e, 'move')}
+            onPointerMove={onPicMove}
+            onPointerUp={onPicUp}
+            onPointerCancel={onPicUp}
+          >
+            {(['nw', 'ne', 'se', 'sw'] as const).map((c) => (
+              <span key={c} className={`gpic__handle gpic__handle--${c}`} onPointerDown={(e) => onPicDown(e, c)} onPointerMove={onPicMove} onPointerUp={onPicUp} />
+            ))}
+          </div>
+        )}
+        {penMode && penOverlay()}
+        {penMode && (
+          <div className="graph__pen-hint" role="status">
+            <span>{t.penHint}</span>
+            {pen.length >= 2 && (
+              <button type="button" className="btn btn--small" onClick={() => finishPen(false)}>
+                {t.penDone}
+              </button>
+            )}
+          </div>
+        )}
         {box && (
           <div
             className="zoombox"
@@ -551,6 +784,9 @@ export function GraphPanel({
       <div className="hud hud--top-left">
         {styles}
         {templatesMenu}
+        <button type="button" className="hud-btn" title={t.addPicture} onClick={() => void addPicture()}>
+          {t.picture}
+        </button>
         <button type="button" className="hud-btn" aria-pressed={figure.axes} onClick={() => onFigure({ ...figure, axes: !figure.axes })}>
           {t.axes}
         </button>
@@ -600,6 +836,24 @@ export function GraphPanel({
           <button type="button" className="hud-btn hud-btn--icon" aria-label={t.resetView} title={t.resetView} onClick={() => setView(DEFAULT_VIEW)}>
             <HomeIcon />
           </button>
+          <button
+            type="button"
+            className="hud-btn hud-btn--icon"
+            aria-label={t.pen}
+            title={t.penHint}
+            aria-pressed={penMode}
+            onClick={() => {
+              if (penMode) finishPen(false);
+              setPenMode(!penMode);
+              setBoxMode(false);
+            }}
+          >
+            <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
+              <path d="M8 2.5l4 5-2.2 5.5H6.2L4 7.5z" stroke="currentColor" strokeWidth="1.3" fill="none" strokeLinejoin="round" />
+              <path d="M8 2.5V8" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
+              <circle cx="8" cy="8.6" r="1" fill="currentColor" />
+            </svg>
+          </button>
           <button type="button" className="hud-btn hud-btn--icon" aria-label={t.zoomBox} title={t.zoomBoxHint} aria-pressed={boxMode} onClick={() => setBoxMode((b) => !b)}>
             <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
               <path d="M2.5 5V2.5H5M11 2.5h2.5V5M13.5 11v2.5H11M5 13.5H2.5V11" stroke="currentColor" strokeWidth="1.5" fill="none" strokeLinecap="round" />
@@ -615,7 +869,66 @@ export function GraphPanel({
         </div>
       </div>
 
-      {info && (
+      {picture && !exam && (
+        <div className="hud hud--bottom-left">
+          <section className="info gpic-panel" aria-label={t.pictureTitle}>
+            <div className="gpic-panel__top">
+              <img className="gpic-panel__thumb" src={picture.src} alt="" />
+              <span className="info__title">{t.pictureTitle}</span>
+              <button type="button" className="btn btn--small" onClick={() => (setPictures((ps) => ps.filter((p) => p.id !== picture.id)), setPicSel(null))}>
+                {t.pictureDelete}
+              </button>
+            </div>
+            <div className="gpic-panel__grid">
+              <label>
+                <span>{t.pictureCenter} x</span>
+                <input type="number" step="any" value={picture.cx} onChange={(e) => Number.isFinite(e.target.valueAsNumber) && patchPicture(picture.id, { cx: e.target.valueAsNumber })} />
+              </label>
+              <label>
+                <span>{t.pictureCenter} y</span>
+                <input type="number" step="any" value={picture.cy} onChange={(e) => Number.isFinite(e.target.valueAsNumber) && patchPicture(picture.id, { cy: e.target.valueAsNumber })} />
+              </label>
+              <label>
+                <span>{t.pictureWidth}</span>
+                <input
+                  type="number"
+                  step="any"
+                  min="0"
+                  value={picture.w}
+                  onChange={(e) => {
+                    const w = e.target.valueAsNumber;
+                    if (Number.isFinite(w) && w > 0) patchPicture(picture.id, picRatio ? { w, h: nice((picture.h * w) / picture.w) } : { w });
+                  }}
+                />
+              </label>
+              <label>
+                <span>{t.pictureHeight}</span>
+                <input
+                  type="number"
+                  step="any"
+                  min="0"
+                  value={picture.h}
+                  onChange={(e) => {
+                    const h = e.target.valueAsNumber;
+                    if (Number.isFinite(h) && h > 0) patchPicture(picture.id, picRatio ? { h, w: nice((picture.w * h) / picture.h) } : { h });
+                  }}
+                />
+              </label>
+            </div>
+            <label className="gpic-panel__check">
+              <input type="checkbox" checked={picRatio} onChange={(e) => setPicRatio(e.target.checked)} />
+              {t.pictureRatio}
+            </label>
+            <label className="gpic-panel__range">
+              <span>{t.pictureOpacity}</span>
+              <input type="range" min="0" max="100" value={Math.round(picture.opacity * 100)} onChange={(e) => patchPicture(picture.id, { opacity: e.target.valueAsNumber / 100 })} />
+              <span className="num">{Math.round(picture.opacity * 100)}%</span>
+            </label>
+            <p className="info__hint">{t.pictureHint}</p>
+          </section>
+        </div>
+      )}
+      {info && !picture && (
         <div className="hud hud--bottom-left">
           <section className="info" aria-live="polite">
             {selectedGraph && (

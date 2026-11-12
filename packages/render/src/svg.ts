@@ -62,7 +62,12 @@ export function sceneToSvg(scene: Scene, theme: DrawTheme): string {
     );
   }
   for (const p of scene.points) {
-    out.push(`<circle cx="${r(p.x)}" cy="${r(p.y)}" r="${exam ? 2.6 : 4.5}" fill="${exam ? theme.ink : (p.color ?? (p.colored ? color(p.series) : theme.ink))}"/>`);
+    const ink = exam ? theme.ink : (p.color ?? (p.colored ? color(p.series) : theme.ink));
+    out.push(
+      p.open
+        ? `<circle cx="${r(p.x)}" cy="${r(p.y)}" r="${exam ? 3 : 4.5}" fill="${theme.background ?? theme.halo ?? '#ffffff'}" stroke="${ink}" stroke-width="${exam ? 1.2 : 2}"/>`
+        : `<circle cx="${r(p.x)}" cy="${r(p.y)}" r="${exam ? 2.6 : 4.5}" fill="${ink}"/>`,
+    );
   }
   for (const l of scene.labels) {
     const fill = l.kind === 'tick' && !exam ? theme.muted : theme.ink;

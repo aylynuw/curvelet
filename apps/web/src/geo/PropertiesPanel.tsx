@@ -32,6 +32,7 @@ export function PropertiesPanel({
   onAngle,
   canEditAngle,
   onUnlock,
+  onImage,
 }: {
   s: GeoStrings;
   selected: GeoObject[];
@@ -51,6 +52,8 @@ export function PropertiesPanel({
   canEditAngle: (t: AngleTarget) => boolean;
   /** let a typed value go */
   onUnlock: (owner: string, which: 'sides' | 'corners', k: number) => void;
+  /** a picture's size or opacity changed */
+  onImage: (id: string, patch: { w?: number; h?: number; opacity?: number }) => void;
 }) {
   const byId = new Map(objects.map((o) => [o.id, o]));
   const name = (id: string) => byId.get(id)?.name ?? '?';
@@ -208,6 +211,34 @@ export function PropertiesPanel({
             onProps({ angleLabel: t ? 'custom' : 'value' });
           }}
         />
+      </Section>
+    );
+  } else if (one && one.kind === 'image') {
+    const ratio = one.props?.imageRatio !== false;
+    const num = (v: number) => String(Number(v.toPrecision(4)));
+    const size = (which: 'w' | 'h') => (t: string) => {
+      const v = Number(t);
+      if (!Number.isFinite(v) || v <= 0) return;
+      if (!ratio) return onImage(one.id, { [which]: v });
+      const k = v / one[which];
+      onImage(one.id, { w: one.w * k, h: one.h * k });
+    };
+    body = (
+      <Section title={s.kinds.image}>
+        <label className="gp__row">
+          <span className="gp__label">{s.imageWidth}</span>
+          <CommitInput className="input gp__input" inputMode="decimal" value={num(one.w)} onCommit={size('w')} />
+        </label>
+        <label className="gp__row">
+          <span className="gp__label">{s.imageHeight}</span>
+          <CommitInput className="input gp__input" inputMode="decimal" value={num(one.h)} onCommit={size('h')} />
+        </label>
+        <Toggle label={s.imageRatio} on={ratio} onChange={(v) => onPropsFor([one.id], { imageRatio: v })} />
+        <label className="gp__row gp__range">
+          <span className="gp__label">{s.imageOpacity}</span>
+          <input type="range" min="0" max="100" value={Math.round(one.opacity * 100)} onChange={(e) => onImage(one.id, { opacity: e.target.valueAsNumber / 100 })} />
+          <span className="gp__value">{Math.round(one.opacity * 100)}%</span>
+        </label>
       </Section>
     );
   } else if (one && shape?.type === 'point') {

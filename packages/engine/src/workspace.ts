@@ -4,6 +4,7 @@ import { compileComplex, compileReal, type CompileContext, type ComplexFn } from
 import { GEOMETRY_FUNCTIONS, type Pt, type Shape } from './geometry';
 import { STATS_FUNCTIONS, evalFit } from './stats';
 import { FIELD_FORMS, SPECIAL_FORMS, evaluate, splitName, type Env, type UserFunction } from './evaluate';
+import { caseConditions, findEdges, type Edges } from './edges';
 import { formatReal } from './format';
 import { parse, parseExpression } from './parser';
 import { printNode } from './print';
@@ -51,7 +52,17 @@ export type Mask = (x: number, y: number, t: number) => boolean;
 /** Something the graph draws, in line order. */
 export type Graphable =
   /** y = f(x) (dir 'y') or x = g(y) (dir 'x'); op is the relation with y (or x) on the left */
-  | { id: string; kind: 'curve'; dir: 'y' | 'x'; fn: (t: number) => number; op: RelOp; label: string; mask?: Mask }
+  | {
+      id: string;
+      kind: 'curve';
+      dir: 'y' | 'x';
+      fn: (t: number) => number;
+      op: RelOp;
+      label: string;
+      mask?: Mask;
+      /** cases: where the curve breaks between lo and hi, and its end dots (● included, ○ left out) */
+      edges?: (lo: number, hi: number) => Edges;
+    }
   /** F(x, y) op 0, e.g. x^2 + y^2 - 9 = 0 */
   | { id: string; kind: 'implicit'; fn: (x: number, y: number) => number; op: RelOp; label: string; mask?: Mask }
   /** (x(t), y(t)) for t from tmin to tmax */
@@ -664,7 +675,8 @@ export class Workspace {
     if (stmt.kind === 'define' && stmt.params?.length === 1 && r.status === 'function') {
       const body = substitute(this.expandedBody(id), new Map([[stmt.params[0]!, { type: 'ident', name: 'x' } as Node]]));
       const fn = compileReal(body, this.compileContext(['x']));
-      return { id, kind: 'curve', dir: 'y', fn: (x) => fn([x]), op: '=', label: `y = ${stmt.name}(x)`, ...masked };
+      const f = (x: number) => fn([x]);
+      return { id, kind: 'curve', dir: 'y', fn: f, op: '=', label: `y = ${stmt.name}(x)`, ...masked, ...this.edgesFor(body, 'x', f) };
     }
 
     if (stmt.kind !== 'relation') return null;
@@ -682,15 +694,32 @@ export class Workspace {
       const t = v === 'y' ? 'x' : 'y';
       if (left.type === 'ident' && left.name === v && !ru.has(v)) {
         const fn = compileReal(right, this.compileContext([t]));
-        return { id, kind: 'curve', dir: v, fn: (a) => fn([a]), op: stmt.op, label, ...masked };
+        const f = (a: number) => fn([a]);
+        return { id, kind: 'curve', dir: v, fn: f, op: stmt.op, label, ...masked, ...this.edgesFor(right, t, f) };
       }
       if (right.type === 'ident' && right.name === v && !lu.has(v)) {
         const fn = compileReal(left, this.compileContext([t]));
-        return { id, kind: 'curve', dir: v, fn: (a) => fn([a]), op: flip(stmt.op), label, ...masked };
+        const f = (a: number) => fn([a]);
+        return { id, kind: 'curve', dir: v, fn: f, op: flip(stmt.op), label, ...masked, ...this.edgesFor(left, t, f) };
       }
     }
     const f = compileReal({ type: 'binary', op: '-', left, right }, this.compileContext(['x', 'y']));
     return { id, kind: 'implicit', fn: (x, y) => f([x, y]), op: stmt.op, label, ...masked };
+  }
+
+  /** a curve with cases: its breaks and end dots, worked out for the part of the axis on screen */
+  private edgesFor(node: Node, t: string, fn: (a: number) => number): { edges?: (lo: number, hi: number) => Edges } {
+    const sides: ((a: number) => number)[] = [];
+    for (const c of caseConditions(node)) {
+      if (c.type !== 'rel') continue;
+      try {
+        const g = compileReal({ type: 'binary', op: '-', left: c.left, right: c.right }, this.compileContext([t]));
+        sides.push((a) => g([a]));
+      } catch {
+        // a condition on something else (a slider): no boundary along this axis
+      }
+    }
+    return sides.length ? { edges: (lo, hi) => findEdges(fn, sides, lo, hi) } : {};
   }
 
   private exprResult(expr: Node, env: Env): Result {

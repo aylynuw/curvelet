@@ -13,7 +13,7 @@ const clampX = (v: Viewport, px: number) => Math.max(-v.width * 4, Math.min(v.wi
  * free axis. The line breaks where the function is undefined, and at jumps
  * like tan's asymptotes: a big jump whose midpoint isn't between its ends.
  */
-export function sampleCurve(fn: (t: number) => number, dir: 'y' | 'x', v: Viewport, step = 1, mask?: Mask): Polyline[] {
+export function sampleCurve(fn: (t: number) => number, dir: 'y' | 'x', v: Viewport, step = 1, mask?: Mask, cuts: number[] = [], holes: number[] = []): Polyline[] {
   const along = dir === 'y' ? v.width : v.height;
   const across = dir === 'y' ? v.height : v.width;
   const tAt = (s: number) => (dir === 'y' ? fromPx(v, s) : fromPy(v, s));
@@ -28,9 +28,41 @@ export function sampleCurve(fn: (t: number) => number, dir: 'y' | 'x', v: Viewpo
     line = [];
   };
 
+  // the screen positions of the breaks (a jump in cases), in order
+  const breaks = cuts.map((c) => ({ c, s: dir === 'y' ? toPx(v, c) : toPy(v, c) })).sort((a, b) => a.s - b.s);
+  let nextBreak = 0;
   for (let s = 0; s <= along + step / 2; s += step) {
     const t = tAt(s);
+    // a break between the last sample and this one: finish the line at the boundary, start again past it
+    let onBreak = false;
+    while (nextBreak < breaks.length && breaks[nextBreak]!.s <= s + 1e-6) {
+      const b = breaks[nextBreak++]!;
+      if (b.s < 0) continue;
+      onBreak ||= Math.abs(b.s - s) <= 1e-6;
+      // farther than the 1e-9 that conditions allow for rounding, so each side reads its own case
+      const near = 1e-7 * Math.max(1, Math.abs(b.c));
+      const [before, after] = dir === 'y' ? [b.c - near, b.c + near] : [b.c + near, b.c - near];
+      const end1 = fn(before);
+      if (prev && Number.isFinite(end1)) line.push(...point(b.s, end1));
+      end();
+      prev = null;
+      const start = fn(after);
+      if (Number.isFinite(start)) {
+        line.push(...point(b.s, start));
+        prev = { s: b.s, value: start };
+      }
+    }
+    // the sample sits on the break itself: it was drawn as the two ends
+    if (onBreak) continue;
     let value = fn(t);
+    // a point lifted off the curve (a hole): the line runs through, the dots show the point
+    for (const h of holes) {
+      const near = 1e-7 * Math.max(1, Math.abs(h));
+      if (Math.abs(t - h) <= near) {
+        const beside = fn(t + 2 * near);
+        value = Number.isFinite(beside) ? beside : fn(t - 2 * near);
+      }
+    }
     // outside the line's {…} conditions: not drawn
     if (mask && Number.isFinite(value) && !(dir === 'y' ? mask(t, value, NaN) : mask(value, t, NaN))) value = NaN;
     if (!Number.isFinite(value)) {

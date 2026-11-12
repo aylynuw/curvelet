@@ -90,7 +90,11 @@ export function sceneToTikz(scene: Scene, theme: DrawTheme, rgb: (css: string) =
   }
   for (const p of scene.points) {
     const css = exam ? theme.ink : (p.color ?? (p.colored ? theme.curves[p.series % theme.curves.length]! : theme.ink));
-    body.push(`\\fill[${name(css)}] (${n(p.x)},${n(p.y)}) circle[radius=${pt(exam ? 2.6 : 4.5)}];`);
+    body.push(
+      p.open
+        ? `\\filldraw[fill=white, draw=${name(css)}, line width=${pt(exam ? 1.2 : 2)}] (${n(p.x)},${n(p.y)}) circle[radius=${pt(exam ? 3 : 4.5)}];`
+        : `\\fill[${name(css)}] (${n(p.x)},${n(p.y)}) circle[radius=${pt(exam ? 2.6 : 4.5)}];`,
+    );
   }
   for (const l of scene.labels) body.push(label(l));
 

@@ -89,7 +89,8 @@ export interface Scene {
   }[];
   guides: number[];
   /** `colored`: drawn in its line's colour (scatter data) rather than ink */
-  points: { id: string; x: number; y: number; series: number; colored?: boolean; color?: string }[];
+  /** `open`: a hollow dot, a value the graph leaves out (the ○ at a jump in cases) */
+  points: { id: string; x: number; y: number; series: number; colored?: boolean; color?: string; open?: boolean }[];
   /** domain colouring of a complex function, drawn under everything else */
   image?: DomainImage;
   labels: Label[];
@@ -219,10 +220,17 @@ export function buildScene(graphables: Graphable[], v: Viewport, opts: SceneOpti
     if (g.kind === 'point' || g.kind === 'surface' || g.kind === 'complex') continue;
     const series = opts.series(g.id);
     if (g.kind === 'curve') {
-      const lines = sampleCurve(g.fn, g.dir, v, opts.sampleStep ?? 1, g.mask);
+      // cases: break at the jumps, mark the ends ● (the point is on the graph) or ○ (it isn't)
+      const [lo, hi] = g.dir === 'y' ? [xmin(v), xmax(v)] : [ymin(v), ymax(v)];
+      const edges = g.edges?.(lo, hi);
+      const lines = sampleCurve(g.fn, g.dir, v, opts.sampleStep ?? 1, g.mask, edges?.cuts, edges?.dots.map((d) => d.t));
       const polys = curveRegions(lines, g.dir, g.op, v);
       if (polys.length) scene.fills.push({ id: g.id, series, polys, rects: [] });
       scene.curves.push({ id: g.id, series, dashed: strict(g.op), lines, segs: [] });
+      for (const d of edges?.dots ?? []) {
+        const [px, py] = g.dir === 'y' ? [toPx(v, d.t), toPy(v, d.v)] : [toPx(v, d.v), toPy(v, d.t)];
+        if (px >= -10 && px <= v.width + 10 && py >= -10 && py <= v.height + 10) scene.points.push({ id: g.id, x: px, y: py, series, colored: true, open: d.open });
+      }
     } else if (g.kind === 'implicit') {
       const cell = exam ? 2 : 4;
       const rects = implicitRegion(g.fn, g.op, v, cell, g.mask);
@@ -246,7 +254,7 @@ export function buildScene(graphables: Graphable[], v: Viewport, opts: SceneOpti
     } else if (g.kind === 'shape') {
       const lines = shapeLines(g.shape, v);
       // polygons get a light fill on screen; printed figures stay as lines
-      if (g.shape.type === 'polygon' && !exam) scene.fills.push({ id: g.id, series, polys: lines, rects: [] });
+      if ((g.shape.type === 'polygon' || (g.shape.type === 'path' && g.shape.closed)) && !exam) scene.fills.push({ id: g.id, series, polys: lines, rects: [] });
       scene.curves.push({ id: g.id, series, dashed: false, lines, segs: [] });
     } else if (g.kind === 'field') {
       // the marks thin, the solution curves through the seeds at full weight
@@ -422,6 +430,8 @@ function shapeLines(shape: Shape, v: Viewport): Polyline[] {
     }
     case 'polygon':
       return [[...shape.pts.flatMap(P), ...P(shape.pts[0]!)]];
+    case 'path':
+      return [shape.pts.flatMap(P)];
   }
 }
 

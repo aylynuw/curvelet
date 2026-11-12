@@ -34,10 +34,11 @@ export function figureBounds(objects: GeoObject[], shapes: Map<string, Shape>, d
     if (!s) continue;
     if (s.type === 'point' || s.type === 'text') take(s.at);
     else if (s.type === 'line') [s.a, s.b].forEach((p) => take(p));
-    else if (s.type === 'polygon') s.pts.forEach((p) => take(p));
+    else if (s.type === 'polygon' || s.type === 'path') s.pts.forEach((p) => take(p));
     else if (s.type === 'circle') take(s.c, s.r);
     else if (s.type === 'ellipse') take(s.c, Math.max(s.rx, s.ry));
     else if (s.type === 'angle') take(s.v);
+    else if (s.type === 'image') [take({ x: s.c.x - s.w / 2, y: s.c.y - s.h / 2 }), take({ x: s.c.x + s.w / 2, y: s.c.y + s.h / 2 })];
   }
   for (const t of deco.texts) if (ids.has(t.owner)) take(t.at, t.size * Math.max(1, t.text.length) * 0.3);
   for (const l of deco.lines) if (ids.has(l.owner)) l.pts.forEach((p) => take(p));

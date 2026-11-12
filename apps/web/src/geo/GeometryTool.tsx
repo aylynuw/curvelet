@@ -4,9 +4,10 @@ import { exactSqrt, exactText } from './exact';
 import { canvasToPdf, canvasToPng, copyFigure, download, figureBounds, figureSvg, svgToCanvas } from './exportFigure';
 import { renderFigure } from './figure';
 import { decorate } from './labels';
-import { cloneObjects, cornerIds, crossings, draggable, freeRoots, measure, nextName, refs, resolve, toLines, withAncestors, without, type Deco, type GeoObject, type Pt, type Shape } from './model';
+import { cloneObjects, cornerIds, crossings, type PathNode, draggable, freeRoots, measure, nextName, refs, resolve, toLines, withAncestors, without, type Deco, type GeoObject, type Pt, type Shape } from './model';
 import { PropertiesPanel, type AngleTarget, type LengthTarget } from './PropertiesPanel';
 import { BASE_PROPS, type GeoProps } from './props';
+import { pickPicture, pictureFile, readPicture, type Picture } from '../pictures';
 
 type QuickAction = 'lengths' | 'angles' | 'hide' | 'reset';
 import { recognize } from './sketch';
@@ -69,7 +70,7 @@ const DRAG_TOOLS = new Set<GeoTool>(['segment', 'line', 'ray', 'circle', 'rect',
 const BOX_TOOLS = new Set<GeoTool>(['rect', 'triangle', 'ellipse', 'square']);
 type Group = 'line' | 'shape' | 'construct';
 /** the toolbar: the tools used most, and groups that open for the rest */
-const TOOLBAR: (GeoTool | Group)[] = ['select', 'point', 'line', 'shape', 'angle', 'construct'];
+const TOOLBAR: (GeoTool | Group)[] = ['select', 'bezier', 'point', 'line', 'shape', 'angle', 'construct'];
 const GROUP_TOOLS: Record<Group, GeoTool[]> = {
   line: ['segment', 'line', 'ray'],
   shape: ['rect', 'triangle', 'regular', 'polygon', 'circle', 'ellipse', 'pen'],
@@ -77,7 +78,7 @@ const GROUP_TOOLS: Record<Group, GeoTool[]> = {
 };
 /** one-letter shortcuts, as in drawing apps */
 const KEYS: Record<string, GeoTool> = {
-  v: 'select', p: 'point', a: 'angle',
+  v: 'select', p: 'bezier', d: 'point', a: 'angle',
   // lines
   l: 'segment', i: 'line', y: 'ray',
   // shapes
@@ -119,12 +120,16 @@ type Op =
   | { kind: 'pan'; from: Pt; view: View; moved: boolean }
   | { kind: 'draw'; tool: GeoTool; start: Snap; startScreen: Pt; cur: Snap; moved: boolean }
   | { kind: 'move'; start: Pt; orig: Map<string, Pt>; moved: boolean; exclude: Set<string> }
-  | { kind: 'resize'; handle: Handle; box: Bounds; orig: Map<string, Pt>; ell: Map<string, { rx: number; ry: number }>; moved: boolean }
-  | { kind: 'turn'; center: Pt; from: number; orig: Map<string, Pt>; ell: Map<string, number>; moved: boolean }
+  | { kind: 'resize'; handle: Handle; box: Bounds; orig: Map<string, Pt>; ell: Map<string, { rx: number; ry: number }>; moved: boolean; paths: Map<string, PathNode[]>; imgs: Map<string, { w: number; h: number }> }
+  | { kind: 'turn'; center: Pt; from: number; orig: Map<string, Pt>; ell: Map<string, number>; moved: boolean; paths: Map<string, PathNode[]> }
   | { kind: 'marquee'; a: Pt; b: Pt; add: boolean }
   | { kind: 'label'; owner: string; key: string; start: Pt; orig: Pt; moved: boolean }
   | { kind: 'pinch'; d0: number; c0: Pt; view: View }
-  | { kind: 'angle'; first: SideHit; cur: SideHit | null };
+  | { kind: 'angle'; first: SideHit; cur: SideHit | null }
+  /** the pen: dragging out the handles of the anchor just placed */
+  | { kind: 'pen'; path: string; k: number; anchor: Pt; moved: boolean }
+  /** a path's handle dragged: the other side follows unless Alt breaks it */
+  | { kind: 'handle'; path: string; k: number; which: 'in' | 'out'; anchor: Pt; moved: boolean }
 
 const nice = (raw: number) => {
   const p = 10 ** Math.floor(Math.log10(raw));
@@ -185,6 +190,12 @@ export function draftOf(tool: GeoTool, p0: Pt, p1: Pt, regular: boolean, center:
   return null;
 }
 
+/** pen anchors no path uses any more go with it */
+function pruneAnchors(list: GeoObject[]): GeoObject[] {
+  const used = new Set(list.flatMap((o) => (o.kind === 'path' ? o.nodes.map((n) => n.p) : [])));
+  return list.some((o) => o.kind === 'point' && o.anchor && !used.has(o.id)) ? list.filter((o) => !(o.kind === 'point' && o.anchor && !used.has(o.id))) : list;
+}
+
 export function GeometryTool({ s, onSendToGraph }: { s: GeoStrings; onSendToGraph: (lines: string[]) => void }) {
   const [doc, setDoc] = useState<Doc>(loadDoc);
   const { objects, view, defaults } = doc;
@@ -199,6 +210,8 @@ export function GeometryTool({ s, onSendToGraph }: { s: GeoStrings; onSendToGrap
   const [sel, setSel] = useState<string[]>([]);
   const [hover, setHover] = useState<Pt | null>(null);
   const [stroke, setStroke] = useState<Pt[] | null>(null);
+  /** the pen path being drawn, until Enter, Esc or another tool */
+  const [penPath, setPenPath] = useState<string | null>(null);
   const [op, setOpState] = useState<Op | null>(null);
   const opRef = useRef<Op | null>(null);
   const setOp = (o: Op | null) => {
@@ -258,6 +271,13 @@ export function GeometryTool({ s, onSendToGraph }: { s: GeoStrings; onSendToGrap
   const byId = useMemo(() => new Map(objects.map((o) => [o.id, o])), [objects]);
   const deco = useMemo(() => decorate(objects, shapes, defaults), [objects, shapes, defaults]);
   const selSet = useMemo(() => new Set(sel.filter((id) => byId.has(id))), [sel, byId]);
+  const penPaths = useMemo(() => objects.filter((o): o is Extract<GeoObject, { kind: 'path' }> => o.kind === 'path' && (o.id === penPath || selSet.has(o.id) || o.nodes.some((n) => selSet.has(n.p)))), [objects, penPath, selSet]);
+  const showAnchors = useMemo(() => new Set(penPaths.flatMap((o) => o.nodes.map((n) => n.p))), [penPaths]);
+  /** a pen anchor nobody can see: not snapped to, not picked */
+  const hiddenAnchor = (id: string) => {
+    const o = byId.get(id);
+    return o?.kind === 'point' && Boolean(o.anchor) && !showAnchors.has(id);
+  };
   // Shift keeps shapes regular and resizing even; Alt works from the centre. On touch screens two buttons stand in for them.
   const regular = mods.shift || (touchUI && locks.regular);
   const fromCenter = mods.alt || (touchUI && locks.center);
@@ -266,7 +286,7 @@ export function GeometryTool({ s, onSendToGraph }: { s: GeoStrings; onSendToGrap
   const commit = (next: GeoObject[], nextDefaults: GeoProps = defaults) => {
     setPast((p) => [...p, { objects, defaults }].slice(-200));
     setFuture([]);
-    setDoc((d) => ({ ...d, objects: next, defaults: nextDefaults }));
+    setDoc((d) => ({ ...d, objects: pruneAnchors(next), defaults: nextDefaults }));
   };
   /** the first frame of a drag: the state before it goes on the undo list */
   const beginEdit = () => setPast((p) => [...p, { objects, defaults }].slice(-200));
@@ -327,7 +347,7 @@ export function GeometryTool({ s, onSendToGraph }: { s: GeoStrings; onSendToGrap
     let best: Snap | null = null;
     let bestD = R;
     for (const [id, sh] of shapes) {
-      if (sh.type !== 'point' || exclude?.has(id)) continue;
+      if (sh.type !== 'point' || exclude?.has(id) || hiddenAnchor(id)) continue;
       const d = near(sh.at);
       if (d < bestD) [best, bestD] = [{ at: sh.at, id, kind: 'point' }, d];
     }
@@ -353,7 +373,7 @@ export function GeometryTool({ s, onSendToGraph }: { s: GeoStrings; onSendToGrap
       let gy: number | undefined;
       let [dx, dy] = [R * 0.8, R * 0.8];
       for (const [id, sh] of shapes) {
-        if (sh.type !== 'point' || exclude?.has(id)) continue;
+        if (sh.type !== 'point' || exclude?.has(id) || hiddenAnchor(id)) continue;
         const q = toScreen(sh.at);
         if (Math.abs(q.x - sp.x) < dx) [gx, dx] = [sh.at.x, Math.abs(q.x - sp.x)];
         if (Math.abs(q.y - sp.y) < dy) [gy, dy] = [sh.at.y, Math.abs(q.y - sp.y)];
@@ -373,7 +393,7 @@ export function GeometryTool({ s, onSendToGraph }: { s: GeoStrings; onSendToGrap
     let best: string | null = null;
     let bestD = reach() + 2;
     for (const [id, sh] of shapes) {
-      if (sh.type !== 'point' || id === skip) continue;
+      if (sh.type !== 'point' || id === skip || hiddenAnchor(id)) continue;
       const q = toScreen(sh.at);
       const d = Math.hypot(q.x - sp.x, q.y - sp.y);
       if (d < bestD) [best, bestD] = [id, d];
@@ -381,6 +401,7 @@ export function GeometryTool({ s, onSendToGraph }: { s: GeoStrings; onSendToGrap
     return best;
   };
   const distToShape = (sp: Pt, sh: Shape): number => {
+    if (sh.type === 'image' || sh.type === 'text') return Infinity;
     if (sh.type === 'circle') {
       const c = toScreen(sh.c);
       return Math.abs(Math.hypot(sp.x - c.x, sp.y - c.y) - sh.r * view.s);
@@ -402,6 +423,11 @@ export function GeometryTool({ s, onSendToGraph }: { s: GeoStrings; onSendToGrap
     };
     if (sh.type === 'line') return seg(sh.a, sh.b, sh.extent);
     if (sh.type === 'polygon') return Math.min(...sh.pts.map((p, k) => seg(p, sh.pts[(k + 1) % sh.pts.length]!, 'segment')));
+    if (sh.type === 'path') {
+      let best = Infinity;
+      for (let k = 0; k + 1 < sh.pts.length; k++) best = Math.min(best, seg(sh.pts[k]!, sh.pts[k + 1]!, 'segment'));
+      return best;
+    }
     if (sh.type === 'angle') return Math.hypot(sp.x - toScreen(sh.v).x, sp.y - toScreen(sh.v).y) < 26 ? 0 : Infinity;
     return Infinity;
   };
@@ -423,7 +449,11 @@ export function GeometryTool({ s, onSendToGraph }: { s: GeoStrings; onSendToGrap
         const [dx, dy] = [w.x - sh.c.x, w.y - sh.c.y];
         if (Math.hypot((dx * Math.cos(t) - dy * Math.sin(t)) / sh.rx, (dx * Math.sin(t) + dy * Math.cos(t)) / sh.ry) <= 1) return id;
       }
-      if (sh.type !== 'polygon') continue;
+      if (sh.type === 'image') {
+        if (Math.abs(w.x - sh.c.x) <= sh.w / 2 && Math.abs(w.y - sh.c.y) <= sh.h / 2) return id;
+        continue;
+      }
+      if (sh.type !== 'polygon' && !(sh.type === 'path' && sh.closed)) continue;
       let inside = false;
       for (let i = 0, j = sh.pts.length - 1; i < sh.pts.length; j = i++) {
         const [p, q] = [sh.pts[i]!, sh.pts[j]!];
@@ -648,7 +678,7 @@ export function GeometryTool({ s, onSendToGraph }: { s: GeoStrings; onSendToGrap
     const orig = new Map<string, Pt>();
     for (const r of roots) {
       const o = byId.get(r);
-      if (o?.kind === 'point' || o?.kind === 'text') orig.set(r, { x: o.x, y: o.y });
+      if (o?.kind === 'point' || o?.kind === 'text' || o?.kind === 'image') orig.set(r, { x: o.x, y: o.y });
     }
     return orig;
   };
@@ -657,22 +687,35 @@ export function GeometryTool({ s, onSendToGraph }: { s: GeoStrings; onSendToGrap
     return figureBounds(selected, shapes, { texts: [], lines: [], dots: [] });
   }, [selected, shapes]);
   type Ellipse = Extract<GeoObject, { kind: 'ellipse' }>;
-  const setPositions = (orig: Map<string, Pt>, f: (p: Pt) => Pt, ell?: (o: Ellipse) => Partial<Ellipse>) =>
+  const setPositions = (orig: Map<string, Pt>, f: (p: Pt) => Pt, ell?: (o: Ellipse) => Partial<Ellipse>, pens?: { paths: Map<string, PathNode[]>; vec: (v: Pt) => Pt }, sizes?: (o: Extract<GeoObject, { kind: 'image' }>) => { w: number; h: number } | null) =>
     setDoc((d) => ({
       ...d,
       objects: d.objects.map((o) => {
-        if ((o.kind === 'point' || o.kind === 'text') && orig.has(o.id)) {
+        if ((o.kind === 'point' || o.kind === 'text' || o.kind === 'image') && orig.has(o.id)) {
           const p = f(orig.get(o.id)!);
-          return { ...o, x: p.x, y: p.y };
+          const sized = o.kind === 'image' ? sizes?.(o) : null;
+          return { ...o, x: p.x, y: p.y, ...sized };
         }
         if (o.kind === 'ellipse' && ell) return { ...o, ...ell(o) };
+        if (o.kind === 'path' && pens?.paths.has(o.id)) {
+          const v = pens.vec;
+          return { ...o, nodes: pens.paths.get(o.id)!.map((n) => ({ ...n, in: n.in && v(n.in), out: n.out && v(n.out) })) };
+        }
         return o;
       }),
     }));
 
   const deleteSel = () => {
     if (!selSet.size) return;
-    commit(without(objects, selSet));
+    const gone = new Set(selSet);
+    const kept = objects.map((o) => {
+      if (o.kind !== 'path' || !o.nodes.some((n) => gone.has(n.p) && byId.get(n.p)?.kind === 'point' && (byId.get(n.p) as { anchor?: boolean }).anchor)) return o;
+      const nodes = o.nodes.filter((n) => !gone.has(n.p));
+      if (nodes.length < 2) gone.add(o.id);
+      return { ...o, nodes };
+    });
+    for (const o of objects) if (o.kind === 'point' && o.anchor && gone.has(o.id)) gone.delete(o.id);
+    commit(pruneAnchors(without(kept, gone)));
     setSel([]);
   };
   const duplicate = (list: GeoObject[] | null = null) => {
@@ -695,8 +738,8 @@ export function GeometryTool({ s, onSendToGraph }: { s: GeoStrings; onSendToGrap
   };
 
   // ---- keys: shortcuts like a drawing app (Cmd on Mac, Ctrl elsewhere)
-  const live = useRef({ step, deleteSel, duplicate, nudge, objects, selSet, gridStep, op, setOp, picks, boxStart, chooseTool: ((t: GeoTool) => void t) as (t: GeoTool) => void, showKeys: () => {} });
-  live.current = { step, deleteSel, duplicate, nudge, objects, selSet, gridStep, op, setOp, picks, boxStart, chooseTool: (t: GeoTool) => chooseToolRef.current(t), showKeys: () => setOpenMenu((m) => (m?.id === 'keys' ? null : { id: 'keys', x: Math.max(8, window.innerWidth - 320), y: 110 })) };
+  const live = useRef({ step, deleteSel, duplicate, nudge, objects, selSet, gridStep, op, setOp, picks, boxStart, penPath, finishPen: () => {}, chooseTool: ((t: GeoTool) => void t) as (t: GeoTool) => void, showKeys: () => {} });
+  live.current = { step, deleteSel, duplicate, nudge, objects, selSet, gridStep, op, setOp, picks, boxStart, penPath, finishPen: () => finishPen(), chooseTool: (t: GeoTool) => chooseToolRef.current(t), showKeys: () => setOpenMenu((m) => (m?.id === 'keys' ? null : { id: 'keys', x: Math.max(8, window.innerWidth - 320), y: 110 })) };
   const chooseToolRef = useRef<(t: GeoTool) => void>(() => {});
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -743,6 +786,9 @@ export function GeometryTool({ s, onSendToGraph }: { s: GeoStrings; onSendToGrap
         if (!clipboard) return;
         e.preventDefault();
         L.duplicate(clipboard);
+      } else if ((e.key === 'Escape' || e.key === 'Enter') && L.penPath) {
+        e.preventDefault();
+        L.finishPen();
       } else if (e.key === 'Escape') {
         setMenu(null);
         setExportOpen(false);
@@ -810,6 +856,23 @@ export function GeometryTool({ s, onSendToGraph }: { s: GeoStrings; onSendToGrap
       setStroke([sp]);
       return;
     }
+    if (tool === 'bezier' || tool === 'select') {
+      const knob = (e.target as Element).closest?.('[data-pen]')?.getAttribute('data-pen');
+      if (knob) {
+        const [path, k, which] = knob.split(':') as [string, string, 'in' | 'out'];
+        const po = byId.get(path);
+        const at = po?.kind === 'path' ? shapes.get(po.nodes[+k]!.p) : undefined;
+        if (at?.type === 'point') {
+          beginEdit();
+          setOp({ kind: 'handle', path, k: +k, which, anchor: at.at, moved: false });
+          return;
+        }
+      }
+    }
+    if (tool === 'bezier') {
+      penDown(sp);
+      return;
+    }
     // a label: drag it to a place of its own
     const labelEl = (e.target as Element).closest?.('[data-label]');
     if (labelEl && (tool === 'select' || tool === 'move')) {
@@ -832,14 +895,19 @@ export function GeometryTool({ s, onSendToGraph }: { s: GeoStrings; onSendToGrap
             const o = byId.get(id);
             if (o?.kind === 'ellipse') ell.set(id, o.rot);
           }
-          setOp({ kind: 'turn', center, from: Math.atan2(w.y - center.y, w.x - center.x), orig: origOf(roots), ell, moved: false });
+          setOp({ kind: 'turn', center, from: Math.atan2(w.y - center.y, w.x - center.x), orig: origOf(roots), ell, moved: false, paths: pathsOf(roots) });
         } else {
           const ell = new Map<string, { rx: number; ry: number }>();
           for (const id of roots) {
             const o = byId.get(id);
             if (o?.kind === 'ellipse') ell.set(id, { rx: o.rx, ry: o.ry });
           }
-          setOp({ kind: 'resize', handle: handle as Handle, box: selBox, orig: origOf(roots), ell, moved: false });
+          const imgs = new Map<string, { w: number; h: number }>();
+          for (const id of roots) {
+            const o = byId.get(id);
+            if (o?.kind === 'image') imgs.set(id, { w: o.w, h: o.h });
+          }
+          setOp({ kind: 'resize', handle: handle as Handle, box: selBox, orig: origOf(roots), ell, moved: false, paths: pathsOf(roots), imgs });
         }
         return;
       }
@@ -940,6 +1008,39 @@ export function GeometryTool({ s, onSendToGraph }: { s: GeoStrings; onSendToGrap
       setOp({ ...o, b: sp });
       return;
     }
+    if (o.kind === 'pen' || o.kind === 'handle') {
+      // a short wobble on a fresh anchor leaves it a corner
+      if (o.kind === 'pen' && !o.moved && dist(sp, toScreen(o.anchor)) < 4) return;
+      o.moved = true;
+      const w = toWorld(sp);
+      let v = { x: w.x - o.anchor.x, y: w.y - o.anchor.y };
+      if (e.shiftKey) {
+        const a = Math.round(Math.atan2(v.y, v.x) / (Math.PI / 4)) * (Math.PI / 4);
+        const l = Math.hypot(v.x, v.y);
+        v = { x: l * Math.cos(a), y: l * Math.sin(a) };
+      }
+      const which = o.kind === 'pen' ? 'out' : o.which;
+      const other = which === 'out' ? 'in' : 'out';
+      const broken = o.kind === 'handle' && e.altKey;
+      setDoc((d) => ({
+        ...d,
+        objects: d.objects.map((x) => {
+          if (x.id !== o.path || x.kind !== 'path') return x;
+          const nodes = x.nodes.map((n, j) => {
+            if (j !== o.k) return n;
+            const m: PathNode = { ...n, [which]: v };
+            if (!broken) {
+              const l = Math.hypot(v.x, v.y) || 1;
+              const keep = o.kind === 'handle' && n[other] ? Math.hypot(n[other]!.x, n[other]!.y) : l;
+              m[other] = { x: (-v.x / l) * keep, y: (-v.y / l) * keep };
+            }
+            return m;
+          });
+          return { ...x, nodes };
+        }),
+      }));
+      return;
+    }
     if (o.kind === 'angle') {
       setOp({ ...o, cur: hitSide(sp, o.first) });
       return;
@@ -989,6 +1090,8 @@ export function GeometryTool({ s, onSendToGraph }: { s: GeoStrings; onSendToGrap
         o.orig,
         (p) => ({ x: anchor.x + (p.x - anchor.x) * sx, y: anchor.y + (p.y - anchor.y) * sy }),
         (el) => (o.ell.has(el.id) ? { rx: o.ell.get(el.id)!.rx * Math.abs(sx), ry: o.ell.get(el.id)!.ry * Math.abs(sy) } : {}),
+        { paths: o.paths, vec: (v) => ({ x: v.x * sx, y: v.y * sy }) },
+        (im) => (o.imgs.has(im.id) ? { w: o.imgs.get(im.id)!.w * Math.abs(sx), h: o.imgs.get(im.id)!.h * Math.abs(sy) } : null),
       );
       setReadout(`${round((box.x1 - box.x0) * Math.abs(sx))} × ${round((box.y1 - box.y0) * Math.abs(sy))}`, sp);
       return;
@@ -1003,6 +1106,7 @@ export function GeometryTool({ s, onSendToGraph }: { s: GeoStrings; onSendToGrap
         o.orig,
         (p) => ({ x: o.center.x + (p.x - o.center.x) * c - (p.y - o.center.y) * si, y: o.center.y + (p.x - o.center.x) * si + (p.y - o.center.y) * c }),
         (el) => (o.ell.has(el.id) ? { rot: o.ell.get(el.id)! + (t * 180) / Math.PI } : {}),
+        { paths: o.paths, vec: (v) => ({ x: v.x * c - v.y * si, y: v.x * si + v.y * c }) },
       );
       setReadout(`${round(((((t * 180) / Math.PI) % 360) + 540) % 360 - 180, 1)}°`, sp);
     }
@@ -1024,7 +1128,8 @@ export function GeometryTool({ s, onSendToGraph }: { s: GeoStrings; onSendToGrap
     setOp(null);
     setSnapMark(null);
     if (!o || o.kind === 'pinch' || o.kind === 'pan') return;
-    if (o.kind === 'move' || o.kind === 'resize' || o.kind === 'turn' || o.kind === 'label') {
+    if (o.kind === 'pen') return;
+    if (o.kind === 'move' || o.kind === 'resize' || o.kind === 'turn' || o.kind === 'label' || o.kind === 'handle') {
       if (!o.moved) setPast((p) => p.slice(0, -1));
       else setFuture([]);
       // points dragged by hand, or a shape stretched: its typed values no longer hold, so they let go
@@ -1066,9 +1171,11 @@ export function GeometryTool({ s, onSendToGraph }: { s: GeoStrings; onSendToGrap
               ? [sh.a, sh.b]
               : sh.type === 'circle' || sh.type === 'ellipse'
                 ? [{ x: sh.c.x - big, y: sh.c.y - big }, { x: sh.c.x + big, y: sh.c.y + big }]
-                : sh.type === 'polygon'
+                : sh.type === 'polygon' || sh.type === 'path'
                   ? sh.pts
-                  : [sh.a, sh.v, sh.c];
+                  : sh.type === 'image'
+                    ? [{ x: sh.c.x - sh.w / 2, y: sh.c.y - sh.h / 2 }, { x: sh.c.x + sh.w / 2, y: sh.c.y + sh.h / 2 }]
+                    : [sh.a, sh.v, sh.c];
         if (pts.every(inside)) hit.push(id);
       }
       setSel((cur) => (o.add ? [...new Set([...cur, ...hit])] : hit));
@@ -1094,6 +1201,78 @@ export function GeometryTool({ s, onSendToGraph }: { s: GeoStrings; onSendToGrap
       }
       pick(o.startScreen);
     }
+  };
+
+  /** a picture placed at `at` (the middle of the view by default), 60% of the view at most, selected */
+  const placePicture = (pic: Picture, at?: Pt) => {
+    const vw = size.w / view.s;
+    const vh = size.h / view.s;
+    const aspect = pic.w / pic.h;
+    const w = Math.min(vw * 0.6, vh * 0.6 * aspect);
+    const id = newId();
+    const c = at ?? { x: view.cx, y: view.cy };
+    const t = (v: number) => Number(v.toPrecision(4));
+    // pictures go first, under every shape
+    commit([{ id, kind: 'image', name: `img${objects.filter((o) => o.kind === 'image').length + 1}`, x: t(c.x), y: t(c.y), w: t(w), h: t(w / aspect), src: pic.src, opacity: 1 }, ...objects]);
+    chooseTool('select');
+    setSel([id]);
+  };
+  const addPicture = async () => {
+    const pic = await pickPicture();
+    if (pic) placePicture(pic);
+  };
+
+  /** the pen: a click adds an anchor (a drag pulls out its handles); the first anchor closes the path */
+  const penDown = (sp: Pt) => {
+    const cur = penPath ? byId.get(penPath) : undefined;
+    const path = cur?.kind === 'path' ? cur : null;
+    const sn = snapAt(sp);
+    if (path && path.nodes.length >= 2 && sn.id === path.nodes[0]!.p) {
+      commit(objects.map((o) => (o.id === path.id ? { ...path, closed: true } : o)));
+      setPenPath(null);
+      setSel([path.id]);
+      return;
+    }
+    let list = objects;
+    let pid: string;
+    if (sn.id && !path?.nodes.some((n) => n.p === sn.id)) pid = sn.id;
+    else {
+      pid = newId();
+      list = [...list, { id: pid, kind: 'point', name: '', x: sn.at.x, y: sn.at.y, anchor: true }];
+    }
+    let id: string;
+    let k: number;
+    if (path) {
+      id = path.id;
+      k = path.nodes.length;
+      // the path goes after its new anchor, so the anchor is placed first when the figure is worked out
+      list = [...list.filter((o) => o.id !== id), { ...path, nodes: [...path.nodes, { p: pid }] }];
+    } else {
+      id = newId();
+      k = 0;
+      list = [...list, { id, kind: 'path', name: lowerName(list), nodes: [{ p: pid }], closed: false }];
+      setPenPath(id);
+    }
+    commit(list);
+    setOp({ kind: 'pen', path: id, k, anchor: sn.at, moved: false });
+  };
+  /** the pen lets go of its path; one anchor alone is no path */
+  const finishPen = () => {
+    if (!penPath) return;
+    const id = penPath;
+    setPenPath(null);
+    setDoc((d) => {
+      const o = d.objects.find((x) => x.id === id);
+      if (o?.kind !== 'path' || o.nodes.length >= 2) return d;
+      return { ...d, objects: pruneAnchors(d.objects.filter((x) => x.id !== id)) };
+    });
+    setSel([id]);
+  };
+  const pathsOf = (roots: string[]) => {
+    const r = new Set(roots);
+    const m = new Map<string, PathNode[]>();
+    for (const o of objects) if (o.kind === 'path' && o.nodes.every((n) => r.has(n.p))) m.set(o.id, o.nodes);
+    return m;
   };
 
   /** the angle between two sides that meet: a polygon's own corner, or a new angle */
@@ -1383,7 +1562,43 @@ export function GeometryTool({ s, onSendToGraph }: { s: GeoStrings; onSendToGrap
     return out;
   };
   const highlight = new Set([...selSet, ...picks]);
-  const figure = renderFigure({ objects, shapes, deco, toScreen, scale: view.s, far, highlight, interactive: true });
+  const figure = renderFigure({ objects, shapes, deco, toScreen, scale: view.s, far, highlight, interactive: true, showAnchors });
+
+  // pen paths in hand: their handles, and the next piece following the cursor
+  let penMarks: ReactElement | null = null;
+  if (tool === 'select' || tool === 'bezier') {
+    const parts: ReactElement[] = [];
+    const ks = coarse.current ? 7 : 4.5;
+    for (const o of penPaths) {
+      o.nodes.forEach((n, k) => {
+        const a = shapes.get(n.p);
+        if (a?.type !== 'point') return;
+        const as = toScreen(a.at);
+        for (const which of ['in', 'out'] as const) {
+          const h = n[which];
+          if (!h || Math.hypot(h.x, h.y) * view.s < 1) continue;
+          const hs = toScreen({ x: a.at.x + h.x, y: a.at.y + h.y });
+          parts.push(
+            <g key={`${o.id}:${k}:${which}`}>
+              <line className="geo__pen-arm" x1={as.x} y1={as.y} x2={hs.x} y2={hs.y} />
+              <circle className="geo__pen-knob" data-pen={`${o.id}:${k}:${which}`} cx={hs.x} cy={hs.y} r={ks} />
+            </g>,
+          );
+        }
+      });
+    }
+    const drawing = penPath ? byId.get(penPath) : undefined;
+    if (tool === 'bezier' && drawing?.kind === 'path' && hover && (!op || op.kind !== 'pen')) {
+      const lastNode = drawing.nodes[drawing.nodes.length - 1]!;
+      const a = shapes.get(lastNode.p);
+      if (a?.type === 'point') {
+        const out = lastNode.out ?? { x: 0, y: 0 };
+        const [p0, c1, p1] = [toScreen(a.at), toScreen({ x: a.at.x + out.x, y: a.at.y + out.y }), toScreen(snapAt(toScreen(hover)).at)];
+        parts.push(<path key="next" className="geo__pen-next" d={`M${p0.x},${p0.y} C${c1.x},${c1.y} ${p1.x},${p1.y} ${p1.x},${p1.y}`} />);
+      }
+    }
+    penMarks = parts.length ? <g>{parts}</g> : null;
+  }
 
   // the shape being drawn, dashed, with its size by the cursor
   let preview: ReactElement | null = null;
@@ -1446,6 +1661,7 @@ export function GeometryTool({ s, onSendToGraph }: { s: GeoStrings; onSendToGrap
   };
   const cursor = op?.kind === 'pan' ? 'grabbing' : spaceDown || tool === 'move' ? 'grab' : tool === 'select' ? 'default' : 'crosshair';
   const chooseTool = (id: GeoTool) => {
+    finishPen();
     setTool(id);
     setPicks([]);
     setBoxStart(null);
@@ -1453,7 +1669,7 @@ export function GeometryTool({ s, onSendToGraph }: { s: GeoStrings; onSendToGrap
     setOpenMenu(null);
     const g = (Object.keys(GROUP_TOOLS) as Group[]).find((x) => GROUP_TOOLS[x].includes(id));
     if (g) setLast((l) => ({ ...l, [g]: id }));
-    if (id !== 'select' && id !== 'move') setSel([]);
+    if (id !== 'select' && id !== 'move' && !penPath) setSel([]);
   };
   chooseToolRef.current = chooseTool;
   const openAt = (id: string, el: Element) => {
@@ -1560,6 +1776,9 @@ export function GeometryTool({ s, onSendToGraph }: { s: GeoStrings; onSendToGrap
         )}
 
         <div className="geo__tools-end">
+          <button type="button" className="btn btn--small btn--quiet" title={s.addImageHint} onClick={() => void addPicture()}>
+            {s.addImage}
+          </button>
           <button type="button" className="icon-btn" aria-label={s.undo} title={`${s.undo} (⌘Z)`} disabled={!past.length} onClick={() => step('undo')}>
             <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
               <path d="M6 4L3 7l3 3M3 7h6.5a3.5 3.5 0 010 7H8" stroke="currentColor" strokeWidth="1.5" fill="none" strokeLinecap="round" strokeLinejoin="round" />
@@ -1662,7 +1881,21 @@ export function GeometryTool({ s, onSendToGraph }: { s: GeoStrings; onSendToGrap
       </div>
 
       <div className="geo__body">
-        <section className="geo__stage" aria-label={s.canvas}>
+        <section
+          className="geo__stage"
+          aria-label={s.canvas}
+          onDragOver={(e) => {
+            if ([...e.dataTransfer.types].includes('Files')) e.preventDefault();
+          }}
+          onDrop={async (e) => {
+            const file = pictureFile(e.dataTransfer);
+            if (!file) return;
+            e.preventDefault();
+            const at = toWorld(eventPt(e));
+            const pic = await readPicture(file);
+            if (pic) placePicture(pic, at);
+          }}
+        >
           <p className="geo__hint" role="status">
             {hint}
             {needs && picks.length > 0 && ` (${picks.length}/${needs.length})`}
@@ -1689,6 +1922,7 @@ export function GeometryTool({ s, onSendToGraph }: { s: GeoStrings; onSendToGrap
             {figure}
             {angleMarks}
             {preview}
+            {penMarks}
             {stroke && <polyline className="geo__ink" points={stroke.map((p) => `${p.x},${p.y}`).join(' ')} />}
             {snapMark?.kind && (
               <g className="geo__snap">
@@ -1757,12 +1991,14 @@ export function GeometryTool({ s, onSendToGraph }: { s: GeoStrings; onSendToGrap
               onAngle={onAngle}
               canEditAngle={canEditAngle}
               onUnlock={onUnlock}
+              onImage={(id, patch) => patchObjects(new Set([id]), (o) => (o.kind === 'image' ? { ...o, ...patch } : o))}
             />
           ) : objects.length === 0 ? (
             <p className="geo__empty">{s.empty}</p>
           ) : (
             <ul className="geo__list">
               {objects.map((o) => {
+                if (o.kind === 'point' && o.anchor) return null;
                 const sh = shapes.get(o.id);
                 const m = sh && (sh.type === 'line' || sh.type === 'circle' || sh.type === 'angle') ? measure(sh) : null;
                 const on = selSet.has(o.id);

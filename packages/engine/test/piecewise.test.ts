@@ -53,3 +53,40 @@ describe('piecewise functions', () => {
     expect(w.graphables().length).toBe(1);
   });
 });
+
+describe('the ends of cases on a graph', () => {
+  const edges = (src: string, lo = -5, hi = 5) => {
+    const w = new Workspace();
+    w.set('g', src);
+    const g = w.graphables().find((x) => x.id === 'g');
+    if (g?.kind !== 'curve' || !g.edges) throw new Error('no edges');
+    return g.edges(lo, hi);
+  };
+  it('a jump: ● on the side that holds the boundary, ○ on the other, and a break', () => {
+    const e = edges('y = {x < 1: x, 3}');
+    expect(e.cuts).toEqual([1]);
+    expect(e.dots).toEqual(expect.arrayContaining([{ t: 1, v: 3, open: false }]));
+    const open = e.dots.find((d) => d.open)!;
+    expect(open.t).toBe(1);
+    expect(open.v).toBeCloseTo(1, 5);
+  });
+  it('a point lifted off the curve: a hole and the point', () => {
+    const e = edges('y = {x = 2: 5, x^2}');
+    expect(e.dots.find((d) => !d.open)).toMatchObject({ t: 2, v: 5 });
+    expect(e.dots.find((d) => d.open)!.v).toBeCloseTo(4, 5);
+  });
+  it('a continuous join has nothing to mark', () => {
+    expect(edges('y = {x < 0: -x, x^2}')).toEqual({ cuts: [], dots: [] });
+  });
+  it('the end of a case with nothing past it: ○ when left out, ● when included', () => {
+    expect(edges('y = {x < 2: x}').dots).toEqual([{ t: 2, v: expect.closeTo(2, 5), open: true }]);
+    expect(edges('y = {x <= 2: x}').dots).toEqual([{ t: 2, v: 2, open: false }]);
+  });
+  it('boundaries from any condition, and through a defined function', () => {
+    expect(edges('y = {x^2 < 4: 1, 0}').cuts).toEqual([-2, 2]);
+    const w = new Workspace();
+    w.set('f', 'f(x) = {x < 0: -1, 1}');
+    const g = w.graphables().find((x) => x.id === 'f');
+    expect(g?.kind === 'curve' && g.edges?.(-3, 3).cuts).toEqual([0]);
+  });
+});

@@ -31,6 +31,7 @@ export function renderFigure({
   highlight,
   paint,
   interactive,
+  showAnchors,
 }: {
   objects: GeoObject[];
   shapes: Map<string, Shape>;
@@ -44,9 +45,12 @@ export function renderFigure({
   paint?: Paint;
   /** labels carry data for dragging them */
   interactive?: boolean;
+  /** pen anchors to show (those of the path being drawn or edited); the rest stay hidden */
+  showAnchors?: Set<string>;
 }): ReactElement[] {
   const hl = (id: string) => (highlight?.has(id) ? ' is-picked' : '');
   const stroke = paint ? { stroke: paint.line, strokeWidth: paint.width, fill: 'none' } : {};
+  const images: ReactElement[] = [];
   const fills: ReactElement[] = [];
   const strokes: ReactElement[] = [];
   const dots: ReactElement[] = [];
@@ -76,7 +80,19 @@ export function renderFigure({
       strokes.push(
         <ellipse key={o.id} data-id={o.id} className={`geo__circle${hl(o.id)}`} cx={r(c.x)} cy={r(c.y)} rx={r(sh.rx * scale)} ry={r(sh.ry * scale)} transform={sh.rot ? `rotate(${r(-sh.rot)} ${r(c.x)} ${r(c.y)})` : undefined} {...stroke} />,
       );
+    } else if (sh.type === 'path') {
+      const d = sh.pts.map(toScreen).map((p, k) => `${k ? 'L' : 'M'}${r(p.x)},${r(p.y)}`).join(' ') + (sh.closed ? ' Z' : '');
+      (sh.closed ? fills : strokes).push(
+        <path
+          key={o.id}
+          data-id={o.id}
+          className={`geo__pen${sh.closed ? ' geo__pen--closed' : ''}${hl(o.id)}`}
+          d={d}
+          {...(paint ? { fill: sh.closed ? paint.fill : 'none', stroke: paint.line, strokeWidth: paint.width, strokeLinejoin: 'round' as const, strokeLinecap: 'round' as const } : {})}
+        />,
+      );
     } else if (sh.type === 'point') {
+      if (o.kind === 'point' && o.anchor && !showAnchors?.has(o.id)) continue;
       const p = toScreen(sh.at);
       const rad = paint ? paint.width * 1.8 : sh.free ? 5 : 4;
       dots.push(
@@ -89,6 +105,11 @@ export function renderFigure({
           r={rad}
           {...(paint ? { fill: paint.ink, stroke: 'none' } : {})}
         />,
+      );
+    } else if (sh.type === 'image') {
+      const p = toScreen({ x: sh.c.x - sh.w / 2, y: sh.c.y + sh.h / 2 });
+      images.push(
+        <image key={o.id} data-id={o.id} className={`geo__img${hl(o.id)}`} href={sh.src} x={r(p.x)} y={r(p.y)} width={r(sh.w * scale)} height={r(sh.h * scale)} opacity={sh.opacity} preserveAspectRatio="none" />,
       );
     } else if (sh.type === 'text') {
       const p = toScreen(sh.at);
@@ -138,7 +159,7 @@ export function renderFigure({
       </text>
     );
   });
-  return [...fills, ...strokes, ...marks, ...centers, ...dots, ...labels, ...texts];
+  return [...images, ...fills, ...strokes, ...marks, ...centers, ...dots, ...labels, ...texts];
 }
 
 const r = (v: number) => Math.round(v * 100) / 100;

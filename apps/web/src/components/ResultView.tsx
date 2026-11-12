@@ -26,6 +26,8 @@ function shapeText(s: Shape, t: Strings): string {
       return t.shapeText.circle(at(s.c), n(s.r));
     case 'polygon':
       return t.shapeText.polygon(s.pts.length, n(polygonArea(s.pts)));
+    case 'path':
+      return t.shapeText.path(Math.round((s.controls.length - 1) / 3) + 1, s.closed);
   }
 }
 

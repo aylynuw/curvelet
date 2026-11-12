@@ -46,6 +46,8 @@ export interface GeoProps {
   arrows: number;
   /** point names shown */
   pointLabel: boolean;
+  /** a picture keeps its proportions when its size is typed */
+  imageRatio: boolean;
   /** label size */
   fontSize: number;
   /** variables (single letters) in italic */
@@ -74,6 +76,7 @@ export const BASE_PROPS: GeoProps = {
   ticks: 0,
   arrows: 0,
   pointLabel: true,
+  imageRatio: true,
   fontSize: 0.36,
   italic: true,
   autoTicks: false,

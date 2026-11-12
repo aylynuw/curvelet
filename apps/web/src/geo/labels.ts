@@ -232,7 +232,7 @@ export function decorate(objects: GeoObject[], shapes: Map<string, Shape>, defau
     const cornerOf = (k: number): LabelPart => o.deco?.corners?.[k] ?? {};
 
     if (s.type === 'point') {
-      if (!p.pointLabel) continue;
+      if (!p.pointLabel || (o.kind === 'point' && o.anchor)) continue;
       const dir = outwardOf.get(o.id) ?? unit({ x: 1, y: 1 });
       text({ owner: o.id, key: `${o.id}:name`, at: add(s.at, mul(dir, p.fontSize * 0.95)), text: o.name, p, math: true, push: dir }, o.deco?.moved);
     } else if (s.type === 'line') {

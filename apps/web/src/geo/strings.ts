@@ -3,7 +3,7 @@ import type { Lang } from '../i18n';
 export type GeoTool =
   | 'move' | 'point' | 'segment' | 'line' | 'ray' | 'polygon' | 'circle' | 'compass'
   | 'midpoint' | 'perpendicular' | 'parallel' | 'bisector' | 'intersection'
-  | 'angle' | 'reflect' | 'rotate' | 'pen' | 'delete' | 'select' | 'square' | 'regular' | 'rect' | 'triangle' | 'ellipse';
+  | 'angle' | 'reflect' | 'rotate' | 'pen' | 'delete' | 'select' | 'square' | 'regular' | 'rect' | 'triangle' | 'ellipse' | 'bezier';
 
 const en = {
   toolbar: 'Geometry tools',
@@ -12,7 +12,7 @@ const en = {
     move: 'Move', point: 'Point', segment: 'Segment', line: 'Line', ray: 'Ray', polygon: 'Polygon', circle: 'Circle', compass: 'Compass',
     midpoint: 'Midpoint', perpendicular: 'Perpendicular', parallel: 'Parallel', bisector: 'Bisector', intersection: 'Intersect',
     angle: 'Angle', reflect: 'Reflect', rotate: 'Rotate', pen: 'Freehand', delete: 'Delete',
-    select: 'Select', square: 'Square', regular: 'Regular polygon', rect: 'Rectangle', triangle: 'Triangle', ellipse: 'Ellipse',
+    select: 'Select', square: 'Square', regular: 'Regular polygon', rect: 'Rectangle', triangle: 'Triangle', ellipse: 'Ellipse', bezier: 'Pen',
   } satisfies Record<GeoTool, string>,
   /** what to click next, per tool and step */
   steps: {
@@ -37,6 +37,7 @@ const en = {
     select: ['Click to select; drag on empty space to select several. Hold Shift to keep proportions.'],
     square: ['Drag to draw a square (Alt from the centre), or pick two corners.', 'Pick the next corner; the square is drawn to the left of that side.'],
     rect: ['Drag to draw. Shift makes a square, Alt draws from the centre.', 'Click the opposite corner.'],
+    bezier: ['Click for a corner, drag for a curve. Click the first point to close; Enter or Esc to finish. Alt-drag a handle to break it.'],
     triangle: ['Drag to draw. Shift makes it equilateral, Alt draws from the centre.', 'Click the opposite corner of its box.'],
     ellipse: ['Drag to draw. Shift makes a circle, Alt draws from the centre.', 'Click the opposite corner of its box.'],
     regular: ['Pick the first corner.', 'Pick the next corner; the polygon is drawn to the left of that side.'],
@@ -52,7 +53,7 @@ const en = {
   kinds: {
     point: 'point', midpoint: 'midpoint', intersection: 'intersection', reflect: 'reflection', rotate: 'turned point',
     segment: 'segment', line: 'line', ray: 'ray', perpendicular: 'perpendicular', parallel: 'parallel', bisector: 'bisector',
-    circle: 'circle', compass: 'circle', polygon: 'polygon', angle: 'angle', text: 'label', regular: 'regular polygon', vertex: 'corner', ellipse: 'ellipse',
+    circle: 'circle', compass: 'circle', polygon: 'polygon', angle: 'angle', text: 'label', regular: 'regular polygon', vertex: 'corner', ellipse: 'ellipse', path: 'pen path', image: 'image',
   },
   of: (names: string) => `of ${names}`,
   length: 'length',
@@ -62,6 +63,12 @@ const en = {
   grid: 'Grid',
   axes: 'Axes',
   snap: 'Snap to grid',
+  addImage: 'Image',
+  addImageHint: 'Add an image (or drop one on the board)',
+  imageWidth: 'Width',
+  imageHeight: 'Height',
+  imageOpacity: 'Opacity',
+  imageRatio: 'Keep proportions',
   undo: 'Undo',
   redo: 'Redo',
   fit: 'Show everything',
@@ -227,7 +234,7 @@ const ko: GeoStrings = {
     move: '이동', point: '점', segment: '선분', line: '직선', ray: '반직선', polygon: '다각형', circle: '원', compass: '컴퍼스',
     midpoint: '중점', perpendicular: '수선', parallel: '평행선', bisector: '수직이등분선', intersection: '교점',
     angle: '각', reflect: '대칭', rotate: '회전', pen: '손으로 그리기', delete: '지우기',
-    select: '선택', square: '정사각형', regular: '정다각형', rect: '직사각형', triangle: '삼각형', ellipse: '타원',
+    select: '선택', square: '정사각형', regular: '정다각형', rect: '직사각형', triangle: '삼각형', ellipse: '타원', bezier: '펜',
   },
   steps: {
     move: ['점을 끌어 옮기거나 빈 곳을 끌어 화면을 옮깁니다. 스크롤로 확대합니다.'],
@@ -251,6 +258,7 @@ const ko: GeoStrings = {
     select: ['클릭해 선택하고, 빈 곳을 끌면 여러 개를 고릅니다. Shift를 누르면 비율이 유지됩니다.'],
     square: ['끌어서 정사각형을 그리거나(Alt는 중심에서) 두 꼭짓점을 고르세요.', '다음 꼭짓점을 고르세요. 그 변의 왼쪽에 정사각형이 그려집니다.'],
     rect: ['끌어서 그립니다. Shift는 정사각형, Alt는 중심에서 그립니다.', '맞은편 꼭짓점을 누르세요.'],
+    bezier: ['클릭하면 꺾인 점, 끌면 곡선이 됩니다. 첫 점을 누르면 닫히고 Enter나 Esc로 마칩니다. 손잡이를 Alt로 끌면 한쪽만 움직입니다.'],
     triangle: ['끌어서 그립니다. Shift는 정삼각형, Alt는 중심에서 그립니다.', '상자의 맞은편 꼭짓점을 누르세요.'],
     ellipse: ['끌어서 그립니다. Shift는 원, Alt는 중심에서 그립니다.', '상자의 맞은편 꼭짓점을 누르세요.'],
     regular: ['첫 꼭짓점을 고르세요.', '다음 꼭짓점을 고르세요. 그 변의 왼쪽에 정다각형이 그려집니다.'],
@@ -266,7 +274,7 @@ const ko: GeoStrings = {
   kinds: {
     point: '점', midpoint: '중점', intersection: '교점', reflect: '대칭점', rotate: '회전한 점',
     segment: '선분', line: '직선', ray: '반직선', perpendicular: '수선', parallel: '평행선', bisector: '수직이등분선',
-    circle: '원', compass: '원', polygon: '다각형', angle: '각', text: '글', regular: '정다각형', vertex: '꼭짓점', ellipse: '타원',
+    circle: '원', compass: '원', polygon: '다각형', angle: '각', text: '글', regular: '정다각형', vertex: '꼭짓점', ellipse: '타원', path: '펜 경로', image: '이미지',
   },
   of: (names: string) => `${names}의`,
   length: '길이',
@@ -276,6 +284,12 @@ const ko: GeoStrings = {
   grid: '격자',
   axes: '축',
   snap: '격자에 맞추기',
+  addImage: '이미지',
+  addImageHint: '이미지 가져오기 (판에 끌어다 놓아도 됩니다)',
+  imageWidth: '너비',
+  imageHeight: '높이',
+  imageOpacity: '불투명도',
+  imageRatio: '비율 유지',
   undo: '실행 취소',
   redo: '다시 실행',
   fit: '전체 보기',

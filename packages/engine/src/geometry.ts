@@ -13,7 +13,9 @@ export type Shape =
   | { type: 'line'; a: Pt; b: Pt }
   | { type: 'ray'; a: Pt; b: Pt }
   | { type: 'circle'; c: Pt; r: number }
-  | { type: 'polygon'; pts: Pt[] };
+  | { type: 'polygon'; pts: Pt[] }
+  /** a pen path: cubic Bézier pieces, kept as the points they run through (pts) and their control points */
+  | { type: 'path'; pts: Pt[]; controls: Pt[]; closed: boolean };
 
 type Straight = Extract<Shape, { a: Pt }>;
 
@@ -49,7 +51,7 @@ function real(v: Value | undefined, fname: string): number {
   throw new MathError(`${fname} needs a real number${v ? `, not ${kindName(v)}` : ''}`);
 }
 function straight(v: Value | undefined, fname: string): Straight {
-  if (v?.kind === 'shape' && v.shape.type !== 'circle' && v.shape.type !== 'polygon') return v.shape;
+  if (v?.kind === 'shape' && v.shape.type !== 'circle' && v.shape.type !== 'polygon' && v.shape.type !== 'path') return v.shape;
   throw new MathError(`${fname} needs a line, segment or ray${v ? `, not ${kindName(v)}` : ''}`);
 }
 function circleOf(v: Value | undefined, fname: string): Extract<Shape, { type: 'circle' }> {
@@ -126,7 +128,7 @@ function meetCircles(p: { c: Pt; r: number }, q: { c: Pt; r: number }): Pt[] {
 /** Where two figures meet, sorted left to right (then bottom to top). */
 export function intersections(a: Shape, b: Shape): Pt[] {
   const pieces = (s: Shape): (Straight | Extract<Shape, { type: 'circle' }>)[] =>
-    s.type === 'polygon' ? polygonEdges(s.pts) : [s];
+    s.type === 'polygon' ? polygonEdges(s.pts) : s.type === 'path' ? pathEdges(s.pts) : [s];
   const out: Pt[] = [];
   for (const p of pieces(a)) {
     for (const q of pieces(b)) {
@@ -213,6 +215,14 @@ export const GEOMETRY_FUNCTIONS: Record<string, ValueBuiltin> = {
       const r = args[1]?.kind === 'point' ? dist(c, args[1]) : real(args[1], 'circle');
       if (!(r > 0)) throw new MathError('A circle needs a radius greater than 0');
       return shapeValue({ type: 'circle', c, r });
+    },
+  },
+  /** bezier(P0, C1, C2, P1, …): a smooth curve through P0, P1, …, pulled by the control points between (the pen tool's lines) */
+  bezier: {
+    arity: [4, Infinity],
+    fn: (args) => {
+      if ((args.length - 1) % 3 !== 0) throw new MathError('bezier takes a start point, then three points per piece: two controls and the next point');
+      return shapeValue(bezierPath(args.map((a) => point(a, 'bezier'))));
     },
   },
   polygon: {
@@ -410,6 +420,36 @@ export function describeShape(s: Shape, fmt: (n: number) => string): string {
       return `circle, centre (${fmt(s.c.x)}, ${fmt(s.c.y)}), radius ${fmt(s.r)}`;
     case 'polygon':
       return `polygon, area ${fmt(polygonArea(s.pts))}`;
+    case 'path':
+      return `curve through ${s.controls.length > 1 ? Math.round((s.controls.length - 1) / 3) + 1 : 1} points${s.closed ? ', closed' : ''}`;
   }
+}
+
+/** the short straight pieces a sampled path is drawn with, for where it meets other figures */
+function pathEdges(pts: Pt[]): Straight[] {
+  const out: Straight[] = [];
+  for (let k = 0; k + 1 < pts.length; k++) if (dist(pts[k]!, pts[k + 1]!) > EPS) out.push({ type: 'segment', a: pts[k]!, b: pts[k + 1]! });
+  return out;
+}
+
+/**
+ * Cubic Bézier pieces from their control points P0, C1, C2, P1, C3, C4, P2, …
+ * (3n + 1 points), sampled finely. Closed when the last point is the first.
+ */
+export function bezierPath(controls: Pt[]): Extract<Shape, { type: 'path' }> {
+  const pts: Pt[] = [controls[0]!];
+  for (let k = 0; k + 3 < controls.length; k += 3) {
+    const [p0, c1, c2, p1] = [controls[k]!, controls[k + 1]!, controls[k + 2]!, controls[k + 3]!];
+    for (let j = 1; j <= 48; j++) {
+      const t = j / 48;
+      const u = 1 - t;
+      pts.push({
+        x: u * u * u * p0.x + 3 * u * u * t * c1.x + 3 * u * t * t * c2.x + t * t * t * p1.x,
+        y: u * u * u * p0.y + 3 * u * u * t * c1.y + 3 * u * t * t * c2.y + t * t * t * p1.y,
+      });
+    }
+  }
+  const closed = controls.length > 4 && dist(controls[0]!, controls[controls.length - 1]!) < EPS;
+  return { type: 'path', pts, controls, closed };
 }
 
