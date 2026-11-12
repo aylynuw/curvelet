@@ -24,6 +24,11 @@ const en = {
   clear: 'Clear tape',
   reuse: (src: string) => `Edit ${src} again`,
   waiting: 'Working it out…',
+  insertBelow: 'Add a line below',
+  deleteLine: 'Delete this line',
+  editingLine: (n: number) => `Editing line ${n}: Enter puts it back in place`,
+  addingBelow: (n: number) => `Adding a line under line ${n}`,
+  cancel: 'Cancel',
 };
 
 export type CalcStrings = typeof en;
@@ -52,6 +57,11 @@ const ko: CalcStrings = {
   clear: '기록 지우기',
   reuse: (src: string) => `${src} 다시 고치기`,
   waiting: '계산하는 중…',
+  insertBelow: '아래에 줄 추가',
+  deleteLine: '이 줄 지우기',
+  editingLine: (n: number) => `${n}번째 줄을 고치는 중입니다. Enter를 누르면 그 자리에 바뀝니다`,
+  addingBelow: (n: number) => `${n}번째 줄 아래에 추가합니다`,
+  cancel: '취소',
 };
 
 export const CALC: Record<Lang, CalcStrings> = { en, ko };

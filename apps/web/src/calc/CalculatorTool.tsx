@@ -96,6 +96,8 @@ export function CalculatorTool({
 }) {
   const [tape, setTape] = useState<TapeEntry[]>(loadTape);
   const [input, setInput] = useState('');
+  /** where Enter puts the line: replace an entry, add one under it, or (null) add at the end */
+  const [place, setPlace] = useState<{ kind: 'edit' | 'after'; id: string } | null>(null);
   const format: Format = useNumberForm();
   const setFormat = onFormat;
   const field = useRef<MathfieldElement | null>(null);
@@ -117,18 +119,38 @@ export function CalculatorTool({
   // definitions on the tape stay, like lines in the list: the latest one for each name
   const curName = defName(input);
   const defs = new Map<string, TapeEntry>();
-  for (const e of tape) if (e.def && e.def !== curName) defs.set(e.def, e);
-  const keep = new Set([...defs.values()].map((e) => `def:${e.id}`));
+  for (const e of tape) if (e.def && e.def !== curName && !(place?.kind === 'edit' && place.id === e.id)) defs.set(e.def, e);
+  // the other lines are worked out again, so changing a definition changes what uses it
+  // (lines with ans keep the answer they had: ans meant the line before them)
+  const rows = tape.filter((e) => !e.def && !/\bans\b/.test(e.source));
+  const keep = new Set([...[...defs.values()].map((e) => `def:${e.id}`), ...rows.map((e) => `row:${e.id}`)]);
+  // old ones out first, so a name never has two definitions at once
   for (const id of defIds.current) if (!keep.has(id)) ws.remove(id);
   for (const e of defs.values()) if (ws.source(`def:${e.id}`) !== e.source) ws.set(`def:${e.id}`, e.source);
+  for (const e of rows) if (ws.source(`row:${e.id}`) !== e.source) ws.set(`row:${e.id}`, e.source);
   defIds.current = keep;
+  const shownOf = (e: TapeEntry): TapeEntry => {
+    // definitions saved before notes existed: "function of x" is words, not a number
+    if (e.def) return e.note || /^[-−\d.\/e+ ]+$/.test(e.text) ? e : { ...e, note: true };
+    if (/\bans\b/.test(e.source)) return e;
+    const r = ws.result(`row:${e.id}`);
+    const a = r && r.status !== 'pending' ? answer(r, t) : null;
+    return a ? { ...e, text: a.text, exact: a.exact, math: a.math, note: a.note } : e;
+  };
   ws.set('cur', input);
   const result = input.trim() ? ws.result('cur') : undefined;
   const live = answer(result, t);
 
   const commit = () => {
     if (!live || !input.trim()) return;
-    setTape((tp) => [...tp, { id: newId(), source: input, text: live.text, ...(live.exact ? { exact: live.exact } : {}), ...(live.math ? { math: true } : {}), ...(live.note ? { note: true } : {}), ...(curName && (result?.status === 'function' || result?.status === 'value') ? { def: curName } : {}) }]);
+    const entry: TapeEntry = { id: place?.kind === 'edit' ? place.id : newId(), source: input, text: live.text, ...(live.exact ? { exact: live.exact } : {}), ...(live.math ? { math: true } : {}), ...(live.note ? { note: true } : {}), ...(curName && (result?.status === 'function' || result?.status === 'value') ? { def: curName } : {}) };
+    setTape((tp) => {
+      const k = place ? tp.findIndex((e) => e.id === place.id) : -1;
+      if (k < 0) return [...tp, entry];
+      // edited in place, or added right under the line it was opened from
+      return place!.kind === 'edit' ? tp.map((e, i) => (i === k ? entry : e)) : [...tp.slice(0, k + 1), entry, ...tp.slice(k + 1)];
+    });
+    setPlace(null);
     setInput('');
   };
 
@@ -163,9 +185,18 @@ export function CalculatorTool({
           <p className="calc__empty">{s.emptyTape}</p>
         ) : (
           <ol ref={tapeRef}>
-            {tape.map((e) => (
-              <li key={e.id}>
-                <button type="button" className="calc__entry" aria-label={s.reuse(e.source)} onClick={() => setInput(e.source)}>
+            {tape.map(shownOf).map((e, k) => (
+              <li key={e.id} className={`calc__row${place?.id === e.id ? ` calc__row--${place.kind}` : ''}`}>
+                <button
+                  type="button"
+                  className="calc__entry"
+                  aria-label={s.reuse(e.source)}
+                  onClick={() => {
+                    setPlace({ kind: 'edit', id: e.id });
+                    setInput(e.source);
+                    field.current?.focus();
+                  }}
+                >
                   <span className="calc__src">
                     <MathText text={e.source} />
                   </span>
@@ -173,6 +204,36 @@ export function CalculatorTool({
                     {e.note ? <span className="calc__note">{e.text}</span> : format === 'exact' && e.exact ? <MathText text={e.exact} block /> : e.math ? <MathText text={e.text} block /> : <NumberText text={e.text} />}
                   </span>
                 </button>
+                <span className="calc__row-tools">
+                  <button
+                    type="button"
+                    className="icon-btn"
+                    title={s.insertBelow}
+                    aria-label={`${s.insertBelow} (${k + 1})`}
+                    onClick={() => {
+                      setPlace({ kind: 'after', id: e.id });
+                      setInput('');
+                      field.current?.focus();
+                    }}
+                  >
+                    <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><path d="M7 2.5v9M2.5 7h9" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" /></svg>
+                  </button>
+                  <button
+                    type="button"
+                    className="icon-btn"
+                    title={s.deleteLine}
+                    aria-label={`${s.deleteLine} (${k + 1})`}
+                    onClick={() => {
+                      setTape((tp) => tp.filter((q) => q.id !== e.id));
+                      if (place?.id === e.id) {
+                        setPlace(null);
+                        setInput('');
+                      }
+                    }}
+                  >
+                    <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><path d="M3.5 3.5l7 7M10.5 3.5l-7 7" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" /></svg>
+                  </button>
+                </span>
               </li>
             ))}
           </ol>
@@ -180,6 +241,21 @@ export function CalculatorTool({
       </section>
 
       <section className="calc__display">
+        {place && tape.some((e) => e.id === place.id) && (
+          <div className="calc__place">
+            <span>{place.kind === 'edit' ? s.editingLine(tape.findIndex((e) => e.id === place.id) + 1) : s.addingBelow(tape.findIndex((e) => e.id === place.id) + 1)}</span>
+            <button
+              type="button"
+              className="btn btn--small"
+              onClick={() => {
+                setPlace(null);
+                setInput('');
+              }}
+            >
+              {s.cancel}
+            </button>
+          </div>
+        )}
         <MathInput
           value={input}
           onChange={setInput}
