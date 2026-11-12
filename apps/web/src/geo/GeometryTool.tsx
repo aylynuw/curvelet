@@ -8,6 +8,7 @@ import { cloneObjects, cornerIds, crossings, type PathNode, draggable, freeRoots
 import { PropertiesPanel, type AngleTarget, type LengthTarget } from './PropertiesPanel';
 import { BASE_PROPS, type GeoProps } from './props';
 import { GEO_KEY, notifyEdit } from '../files/keys';
+import { useNumberForm, type NumberForm } from '../numberForm';
 import { slotOf, slotVar } from '../graph/looks';
 import { pickPicture, pictureFile, readPicture, type Picture } from '../pictures';
 
@@ -205,9 +206,15 @@ function pruneAnchors(list: GeoObject[]): GeoObject[] {
   return list.some((o) => o.kind === 'point' && o.anchor && !used.has(o.id)) ? list.filter((o) => !(o.kind === 'point' && o.anchor && !used.has(o.id))) : list;
 }
 
-export function GeometryTool({ s, onSendToGraph }: { s: GeoStrings; onSendToGraph: (lines: string[]) => void }) {
+export function GeometryTool({ s, onSendToGraph, onNumberForm }: { s: GeoStrings; onSendToGraph: (lines: string[]) => void; onNumberForm?: (f: NumberForm) => void }) {
   const [doc, setDoc] = useState<Doc>(loadDoc);
-  const { objects, view, defaults } = doc;
+  const { objects, view } = doc;
+  // the app's fractions-or-decimals setting is the board's own (shapes may still set their own)
+  const form = useNumberForm();
+  const defaults = useMemo<GeoProps>(
+    () => ({ ...doc.defaults, format: form === 'decimal' ? 'decimal' : doc.defaults.format === 'decimal' ? 'auto' : doc.defaults.format }),
+    [doc.defaults, form],
+  );
   const [past, setPast] = useState<Snapshot[]>([]);
   const [future, setFuture] = useState<Snapshot[]>([]);
   const [tool, setTool] = useState<GeoTool>('select');
@@ -1373,6 +1380,7 @@ export function GeometryTool({ s, onSendToGraph }: { s: GeoStrings; onSendToGrap
   const patchObjects = (ids: Set<string>, f: (o: GeoObject) => GeoObject) => commit(objects.map((o) => (ids.has(o.id) ? f(o) : o)));
   const onProps = (patch: Partial<Record<keyof GeoProps, unknown>>) => {
     if (!selSet.size) {
+      if ('format' in patch && onNumberForm) onNumberForm(patch.format === 'decimal' ? 'decimal' : 'exact');
       commit(objects, { ...defaults, ...(patch as Partial<GeoProps>) });
       return;
     }

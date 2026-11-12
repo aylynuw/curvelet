@@ -804,7 +804,7 @@ textarea.input { resize: vertical; line-height: 1.5; }
 .graph__pen-arm { stroke: var(--color-accent); stroke-width: 1; }
 .graph__pen-knob { fill: var(--color-paper); stroke: var(--color-accent); stroke-width: 1.5; }
 .graph__pen-anchor { fill: var(--color-accent); stroke: var(--color-paper); stroke-width: 1.5; }
-.graph__pen-hint { position: absolute; left: 50%; bottom: var(--space-sm); z-index: var(--z-raised); display: flex; align-items: center; gap: var(--space-xs); max-width: calc(100% - 2 * var(--space-sm)); padding: var(--space-3xs) var(--space-3xs) var(--space-3xs) var(--space-xs); border-radius: var(--radius-sm); background: var(--color-paper); box-shadow: var(--shadow-float); font-size: var(--text-sm); color: var(--color-ink-2); transform: translateX(-50%); }
+.graph__pen-hint { position: absolute; left: 50%; top: calc(var(--space-sm) + 52px); z-index: var(--z-raised); display: flex; align-items: center; gap: var(--space-xs); max-width: calc(100% - 2 * var(--space-sm)); padding: var(--space-3xs) var(--space-3xs) var(--space-3xs) var(--space-xs); border-radius: var(--radius-sm); background: var(--color-paper); box-shadow: var(--shadow-float); font-size: var(--text-sm); color: var(--color-ink-2); transform: translateX(-50%); }
 .zoombox { position: absolute; z-index: var(--z-raised); border: 1.5px solid var(--color-accent); background: var(--color-accent-soft); pointer-events: none; }
 
 /* ---- table lines */
@@ -940,3 +940,5 @@ textarea.input { resize: vertical; line-height: 1.5; }
 .gcross:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 2px; }
 .poi__list li { display: flex; align-items: center; gap: var(--space-3xs); }
 .poi__mark { flex: none; width: 28px; height: 28px; }
+.graph__tools button { display: inline-flex; align-items: center; gap: var(--space-2xs); }
+@media (max-width: 640px) { .graph__tools button span { display: none; } }

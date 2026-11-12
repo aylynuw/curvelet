@@ -32,6 +32,8 @@ import { exportGif, exportVideo, videoType, type Sweep } from './animate';
 import { MathText } from '../components/MathText';
 import { Menu, type MenuItem } from './Menu';
 import { fromLocal, nice, toLocal, type GraphPicture } from './pictures';
+import { useNumberForm } from '../numberForm';
+import { toFraction } from '../calc/fraction';
 import { crossingsWith, literalPoints, pointNames, setLiteral, shiftLiterals } from './handles';
 import { decodedImage, pickPicture, pictureFile, readPicture, type Picture } from '../pictures';
 import { GraphSettings } from './GraphSettings';
@@ -174,6 +176,7 @@ export function GraphPanel({
   const complexShown =
     !exam && !view3d ? graphables.find((g) => g.kind === 'complex' && (g.id === selected || !others)) : undefined;
   const drawn = useMemo(() => graphables.filter((g) => g.kind !== 'complex' || g.id === complexShown?.id), [graphables, complexShown]);
+  const numberForm = useNumberForm();
   const sceneOpts = {
     style: (view3d ? 'screen' : figure.style) as Style,
     series: seriesOf,
@@ -184,6 +187,8 @@ export function GraphPanel({
     grid: figure.grid,
     piTicks: figure.piTicks,
     pointLabels: figure.pointLabels,
+    // fractions beside points when numbers are shown exactly (11/5, not 2.2)
+    coord: numberForm === 'exact' ? (n: number) => (Number.isInteger(n) ? String(n) : (toFraction(n, 1000) ?? coordinate(n))) : undefined,
   };
 
   const selectedGraph = graphables.find((g) => g.id === selected && g.kind !== 'point') ?? null;
@@ -329,7 +334,15 @@ export function GraphPanel({
     placePicture(pic, planeAt(viewport, e.clientX - r.left, e.clientY - r.top) as [number, number]);
   };
   // the pen: anchors in plane coordinates, each with one handle (the other mirrors it)
-  const [penMode, setPenMode] = useState(false);
+  /** the graph's tools: select (pick, move, reshape), point (drop a point), pen (draw a curve) */
+  const [tool, setTool] = useState<'select' | 'point' | 'pen'>('select');
+  const penMode = tool === 'pen';
+  const setPenMode = (on: boolean) => setTool(on ? 'pen' : 'select');
+  const chooseTool = (next: 'select' | 'point' | 'pen') => {
+    if (penMode && next !== 'pen') finishPen(false);
+    setTool(next);
+    setBoxMode(false);
+  };
   const [pen, setPen] = useState<{ x: number; y: number; out?: { x: number; y: number } }[]>([]);
   const penDrag = useRef<{ k: number; px: number; py: number; moved: boolean } | null>(null);
   const finishPen = (closed: boolean) => {
@@ -439,30 +452,61 @@ export function GraphPanel({
       ctx.restore();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [drawn, view, size, figure, themeVersion, seriesOf, selected, pois, trace, look, pictures, picsReady]);
-  // where the selection crosses the other curves and shapes (points of interest already show their own)
+  }, [drawn, view, size, figure, themeVersion, seriesOf, selected, pois, trace, look, pictures, picsReady, numberForm]);
+  // where the selection crosses the other curves and shapes; with the point tool, where any two cross
+  // (points of interest already show their own)
   useEffect(() => {
     const scene = sceneRef.current;
-    if (!scene || !selectedGraph || exam) return setCrossings([]);
-    const mine: number[] = [];
-    const others: number[] = [];
+    if (!scene || exam || penMode || (!selectedGraph && tool !== 'point')) return setCrossings([]);
+    const pieces = new Map<string, number[]>();
     for (const c of scene.curves) {
-      const into = c.id.split(':')[0] === selectedGraph.id ? mine : others;
+      const id = c.id.split(':')[0]!;
+      const into = pieces.get(id) ?? [];
       for (const l of c.lines) for (let k = 0; k + 3 < l.length; k += 2) into.push(l[k]!, l[k + 1]!, l[k + 2]!, l[k + 3]!);
       for (let k = 0; k + 3 < c.segs.length; k += 4) into.push(c.segs[k]!, c.segs[k + 1]!, c.segs[k + 2]!, c.segs[k + 3]!);
+      pieces.set(id, into);
     }
-    const found = mine.length ? crossingsWith(mine, others) : [];
-    setCrossings(
-      found
-        .filter((q) => !pois.some((p) => Math.hypot(toPx(viewport, p.x) - q.x, toPy(viewport, p.y) - q.y) < 8))
-        .map((q) => {
-          const [x, y] = planeAt(viewport, q.x, q.y);
-          return { x, y };
-        }),
-    );
+    const ids = [...pieces.keys()].slice(0, 16);
+    const pairs: [string, string][] = selectedGraph
+      ? ids.filter((id) => id !== selectedGraph.id).map((id) => [selectedGraph.id, id])
+      : ids.flatMap((a, i) => ids.slice(i + 1).map((b) => [a, b] as [string, string]));
+    const fnOf = (id: string) => {
+      const g = graphables.find((q) => q.id === id);
+      return g?.kind === 'curve' && g.dir === 'y' ? g.fn : null;
+    };
+    const found: { x: number; y: number }[] = [];
+    for (const [a, b] of pairs) {
+      const pa = pieces.get(a);
+      const pb = pieces.get(b);
+      if (!pa?.length || !pb?.length) continue;
+      for (const q of crossingsWith(pa, pb, 30)) {
+        let [x, y] = planeAt(viewport, q.x, q.y) as [number, number];
+        // two curves y = f(x): the crossing found exactly, by halving the gap where f - g changes sign
+        const [f, g] = [fnOf(a), fnOf(b)];
+        if (f && g) {
+          const h = (t: number) => f(t) - g(t);
+          let [lo, hi] = [x - 3 / viewport.scale, x + 3 / viewport.scale];
+          if (Math.sign(h(lo)) !== Math.sign(h(hi))) {
+            for (let k = 0; k < 60; k++) {
+              const m = (lo + hi) / 2;
+              if (Math.sign(h(m)) === Math.sign(h(lo))) lo = m;
+              else hi = m;
+            }
+            x = (lo + hi) / 2;
+            y = f(x);
+          }
+        }
+        const clean = (v: number) => (Math.abs(v - Math.round(v * 1e9) / 1e9) < 1e-10 ? Math.round(v * 1e9) / 1e9 : v);
+        const pt = { x: clean(x), y: clean(y) };
+        if (!found.some((o) => Math.hypot(toPx(viewport, o.x) - toPx(viewport, pt.x), toPy(viewport, o.y) - toPy(viewport, pt.y)) < 6)) found.push(pt);
+      }
+    }
+    // a crossing already marked by a point (or shown as a point of interest) isn't offered again
+    const taken = [...pois, ...graphables.filter((g): g is Extract<Graphable, { kind: 'point' }> => g.kind === 'point')];
+    setCrossings(found.filter((q) => !taken.some((p) => Math.hypot(toPx(viewport, p.x) - toPx(viewport, q.x), toPy(viewport, p.y) - toPy(viewport, q.y)) < 8)).slice(0, 80));
     // the scene is read after the draw above
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [drawn, view, size, selected, pois]);
+  }, [drawn, view, size, selected, pois, tool]);
 
   // wheel zoom needs a non-passive listener to keep the page from scrolling
   useEffect(() => {
@@ -587,6 +631,24 @@ export function GraphPanel({
     }
     map.set(e.pointerId, p);
   };
+  /** where the point tool puts a point: on a point of interest or crossing, on a curve y = f(x), else on the grid */
+  const pointAt = (px: number, py: number, free: boolean, touch: boolean): [number, number] => {
+    const reach = touch ? 20 : 10;
+    const near = [...pois, ...crossings].find((q) => Math.hypot(toPx(viewport, q.x) - px, toPy(viewport, q.y) - py) < reach);
+    if (near) return [near.x, near.y];
+    const [x0, y0] = planeAt(viewport, px, py);
+    const step = gridStep(viewport.scale).minor / (free ? 10 : 2);
+    const snap = (v: number) => Number((Math.round(v / step) * step).toPrecision(12));
+    const hit = sceneRef.current ? curveAt(sceneRef.current, px, py, reach) : null;
+    const g = hit ? graphables.find((q) => q.id === hit) : undefined;
+    if (g?.kind === 'curve' && g.dir === 'y') {
+      // on the curve: x on the grid, y the curve's own value there
+      const x = snap(x0);
+      const y = g.fn(x);
+      if (Number.isFinite(y) && Math.abs(toPy(viewport, y) - py) < reach * 2) return [x, Number(y.toPrecision(12))];
+    }
+    return [snap(x0), snap(y0)];
+  };
   const onPointerEnd = (e: PointerEvent<HTMLCanvasElement>) => {
     if (penDrag.current) {
       penDrag.current = null;
@@ -620,6 +682,7 @@ export function GraphPanel({
     if (dragged || e.type !== 'pointerup' || !press || press.moved || !sceneRef.current) return;
     // a click: a point of interest pins its label, a curve selects, empty space clears
     const p = local(e);
+    if (tool === 'point') return onAddPoint(...pointAt(p.x, p.y, e.shiftKey, e.pointerType === 'touch'));
     const poi = pois.find((q) => Math.hypot(toPx(viewport, q.x) - p.x, toPy(viewport, q.y) - p.y) < 9);
     if (poi) return setPinned(poi);
     const hit = curveAt(sceneRef.current, p.x, p.y, e.pointerType === 'touch' ? 20 : 10);
@@ -662,8 +725,11 @@ export function GraphPanel({
       e.preventDefault();
       onDeleteLine(selected);
       onSelect(null);
+    } else if (!e.metaKey && !e.ctrlKey && !e.altKey && TOOL_KEYS[e.key.toLowerCase()]) {
+      e.preventDefault();
+      chooseTool(TOOL_KEYS[e.key.toLowerCase()]!);
     } else if (e.key === 'Escape') {
-      if (penMode) setPenMode(false);
+      if (tool !== 'select') chooseTool('select');
       setPicSel(null);
       onSelect(null);
     }
@@ -850,7 +916,7 @@ export function GraphPanel({
       >
         <canvas
           ref={canvasRef}
-          className={`graph__canvas${boxMode || penMode ? ' graph__canvas--box' : ''}`}
+          className={`graph__canvas${boxMode || tool !== 'select' ? ' graph__canvas--box' : ''}`}
           tabIndex={0}
           role="img"
           aria-label={graphables.length ? t.graphOf(described) : t.graphEmptyLabel}
@@ -896,6 +962,11 @@ export function GraphPanel({
               onClick={() => onAddPoint(q.x, q.y)}
             />
           ))}
+        {tool === 'point' && !exam && (
+          <div className="graph__pen-hint" role="status">
+            <span>{t.pointToolHint}</span>
+          </div>
+        )}
         {penMode && penOverlay()}
         {penMode && (
           <div className="graph__pen-hint" role="status">
@@ -941,6 +1012,16 @@ export function GraphPanel({
       </div>
 
       <div className="hud hud--top-left">
+        {!exam && (
+          <div className="segmented graph__tools" role="group" aria-label={t.graphTools}>
+            {(['select', 'point', 'pen'] as const).map((k) => (
+              <button key={k} type="button" aria-pressed={tool === k} title={`${t.toolName[k]} (${TOOL_KEY_OF[k]})`} onClick={() => chooseTool(k)}>
+                <ToolIcon tool={k} />
+                <span>{t.toolName[k]}</span>
+              </button>
+            ))}
+          </div>
+        )}
         {styles}
         {templatesMenu}
         <button type="button" className="hud-btn" title={t.addPicture} onClick={() => void addPicture()}>
@@ -994,24 +1075,6 @@ export function GraphPanel({
           </button>
           <button type="button" className="hud-btn hud-btn--icon" aria-label={t.resetView} title={t.resetView} onClick={() => setView(DEFAULT_VIEW)}>
             <HomeIcon />
-          </button>
-          <button
-            type="button"
-            className="hud-btn hud-btn--icon"
-            aria-label={t.pen}
-            title={t.penHint}
-            aria-pressed={penMode}
-            onClick={() => {
-              if (penMode) finishPen(false);
-              setPenMode(!penMode);
-              setBoxMode(false);
-            }}
-          >
-            <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
-              <path d="M8 2.5l4 5-2.2 5.5H6.2L4 7.5z" stroke="currentColor" strokeWidth="1.3" fill="none" strokeLinejoin="round" />
-              <path d="M8 2.5V8" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
-              <circle cx="8" cy="8.6" r="1" fill="currentColor" />
-            </svg>
           </button>
           <button type="button" className="hud-btn hud-btn--icon" aria-label={t.zoomBox} title={t.zoomBoxHint} aria-pressed={boxMode} onClick={() => setBoxMode((b) => !b)}>
             <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
@@ -1114,6 +1177,29 @@ export function GraphPanel({
         {t.graphHelp}
       </p>
     </div>
+  );
+}
+
+const TOOL_KEYS: Record<string, 'select' | 'point' | 'pen'> = { v: 'select', d: 'point', p: 'pen' };
+const TOOL_KEY_OF = { select: 'V', point: 'D', pen: 'P' } as const;
+
+function ToolIcon({ tool }: { tool: 'select' | 'point' | 'pen' }) {
+  return (
+    <svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true">
+      {tool === 'select' && <path d="M3.5 2.5l9 5.2-4 .9-1.9 3.9z" stroke="currentColor" strokeWidth="1.3" fill="none" strokeLinejoin="round" />}
+      {tool === 'point' && (
+        <>
+          <circle cx="8" cy="8" r="2.6" fill="currentColor" />
+          <path d="M8 1.8v2.4M8 11.8v2.4M1.8 8h2.4M11.8 8h2.4" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
+        </>
+      )}
+      {tool === 'pen' && (
+        <>
+          <path d="M8 2.5l4 5-2.2 5.5H6.2L4 7.5z" stroke="currentColor" strokeWidth="1.3" fill="none" strokeLinejoin="round" />
+          <path d="M8 2.5V8" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
+        </>
+      )}
+    </svg>
   );
 }
 

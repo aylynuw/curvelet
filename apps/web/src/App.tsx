@@ -22,6 +22,7 @@ import { geoThumb, graphThumb } from './files/thumb';
 import { loadPictures, savePictures, type GraphPicture } from './graph/pictures';
 import { pickPicture, type Picture } from './pictures';
 import { PictureRow } from './components/PictureRow';
+import { NumberFormContext, loadNumberForm, saveNumberForm, writeNumber, type NumberForm } from './numberForm';
 import { FILES } from './files/strings';
 import { LEARN } from './learn/strings';
 import { TEACH } from './teach/strings';
@@ -165,6 +166,12 @@ export function App() {
   const [keypad, setKeypad] = useState(initial.keypad);
   const [tab, setTab] = useState<Tab>('lines');
   const [theme, setTheme] = useState<Theme>(initial.theme);
+  // fractions or decimals, everywhere
+  const [numberForm, setNumberFormState] = useState<NumberForm>(loadNumberForm);
+  const setNumberForm = (f: NumberForm) => {
+    setNumberFormState(f);
+    saveNumberForm(f);
+  };
   // the graph's own settings (grid, π numbers, point coordinates) are remembered between visits
   const [figure, setFigure] = useState<FigureOptions>(() => {
     const base: FigureOptions = { style: 'screen', axisNumbers: false, curveLabels: true, axes: true };
@@ -900,6 +907,7 @@ export function App() {
   const nextTheme = themeOrder[(themeOrder.indexOf(theme) + 1) % themeOrder.length]!;
 
   return (
+    <NumberFormContext.Provider value={numberForm}>
     <div className="app" data-keypad={keypad || undefined}>
       <header className="topbar">
         <div className="brand">
@@ -1049,6 +1057,7 @@ export function App() {
       ) : mode === 'calc' ? (
         <main className="workspace workspace--tool">
           <CalculatorTool
+            onFormat={setNumberForm}
             s={cs}
             t={t}
             settings={settings}
@@ -1065,6 +1074,7 @@ export function App() {
         <main className="workspace workspace--tool">
           <GeometryTool
             key={docRev}
+            onNumberForm={setNumberForm}
             s={gs}
             onSendToGraph={(sources) => {
               insertLines(sources, gs.objects);
@@ -1188,6 +1198,15 @@ export function App() {
                   { value: 'complex', label: t.complex },
                 ]}
                 onChange={(v) => changeSettings({ complex: v === 'complex' })}
+              />
+              <Segmented
+                label={t.numberForm}
+                value={numberForm}
+                options={[
+                  { value: 'exact', label: t.formExact },
+                  { value: 'decimal', label: t.formDecimal },
+                ]}
+                onChange={setNumberForm}
               />
             </div>
           </div>
@@ -1329,14 +1348,8 @@ export function App() {
               // the next free capital letter names it
               const taken = new Set(ws.definitions().map((d) => d.name));
               const name = [...'PQRSTUVWABCDEFGHJKLMNOXYZ'].find((c) => !taken.has(c)) ?? `P_${taken.size}`;
-              // a crossing of straight pieces is found exactly enough to write as a fraction (23/6)
-              const f = (v: number) => {
-                for (let d = 1; d <= 60; d++) {
-                  const n = Math.round(v * d);
-                  if (Math.abs(n / d - v) < 1e-7 * Math.max(1, Math.abs(v))) return d === 1 ? String(n === 0 ? 0 : n) : `${n}/${d}`;
-                }
-                return String(Number(v.toFixed(4)));
-              };
+              // written the way numbers are shown: fractions where they are one, or decimals
+              const f = (v: number) => writeNumber(v, numberForm);
               insertLines([`${name} = (${f(x)}, ${f(y)})`], name);
             }}
             graphables={graphables}
@@ -1381,6 +1394,7 @@ export function App() {
         onKeypad={setKeypad}
       />
     </div>
+    </NumberFormContext.Provider>
   );
 }
 

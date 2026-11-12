@@ -28,6 +28,8 @@ export interface SceneOptions {
   piTicks?: boolean;
   /** coordinates beside points on screen (default true) */
   pointLabels?: boolean;
+  /** how a point's coordinates are written beside it (default: to 3 decimals) */
+  coord?: (n: number) => string;
 }
 
 const PI_STEPS: [number, number][] = [[1, 12], [1, 6], [1, 4], [1, 2], [1, 1], [2, 1], [4, 1], [8, 1], [16, 1], [32, 1]];
@@ -339,7 +341,8 @@ export function buildScene(graphables: Graphable[], v: Viewport, opts: SceneOpti
         }
       }
     } else if (opts.pointLabels !== false) {
-      const text = `${g.label ? `${g.label} ` : ''}(${coordinate(g.x)}, ${coordinate(g.y)})`;
+      const c = opts.coord ?? coordinate;
+      const text = `${g.label ? `${g.label} ` : ''}(${c(g.x)}, ${c(g.y)})`;
       scene.labels.push({ ...away(px, py, 10, text), text, kind: 'point' });
     }
   }

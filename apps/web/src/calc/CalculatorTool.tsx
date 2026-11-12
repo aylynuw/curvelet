@@ -10,6 +10,7 @@ import type { MathfieldElement } from '../math/mathlive';
 import { newId } from '../storage';
 import { toFraction } from './fraction';
 import type { CalcStrings } from './strings';
+import { useNumberForm } from '../numberForm';
 
 /** one finished calculation on the tape */
 export interface TapeEntry {
@@ -23,7 +24,6 @@ export interface TapeEntry {
 type Format = 'exact' | 'decimal';
 
 const TAPE_KEY = 'calculator.tape.v1';
-const FORMAT_KEY = 'calculator.format.v1';
 const loadTape = (): TapeEntry[] => {
   try {
     const v = JSON.parse(localStorage.getItem(TAPE_KEY) ?? '[]');
@@ -69,6 +69,7 @@ export function CalculatorTool({
   onAnswer,
   onSendToGraph,
   onNotice,
+  onFormat,
 }: {
   s: CalcStrings;
   t: Strings;
@@ -77,16 +78,13 @@ export function CalculatorTool({
   onAnswer: (listener: () => void) => () => void;
   onSendToGraph: (source: string) => void;
   onNotice: (text: string) => void;
+  /** the app's number setting: exact or decimal */
+  onFormat: (f: Format) => void;
 }) {
   const [tape, setTape] = useState<TapeEntry[]>(loadTape);
   const [input, setInput] = useState('');
-  const [format, setFormat] = useState<Format>(() => {
-    try {
-      return localStorage.getItem(FORMAT_KEY) === '"decimal"' ? 'decimal' : 'exact';
-    } catch {
-      return 'exact';
-    }
-  });
+  const format: Format = useNumberForm();
+  const setFormat = onFormat;
   const field = useRef<MathfieldElement | null>(null);
   const tapeRef = useRef<HTMLOListElement>(null);
   // the symbolic engine answers later; show it when it does
@@ -94,7 +92,6 @@ export function CalculatorTool({
   useEffect(() => onAnswer(rerender), [onAnswer]);
 
   useEffect(() => store(TAPE_KEY, tape), [tape]);
-  useEffect(() => store(FORMAT_KEY, format), [format]);
   useEffect(() => {
     tapeRef.current?.lastElementChild?.scrollIntoView({ block: 'nearest' });
   }, [tape.length]);

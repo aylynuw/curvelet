@@ -334,7 +334,7 @@ export function LineRow({
           </div>
         )}
         <output className="line__result" id={resultId} aria-live="polite" hidden={!hasResult}>
-          <ResultView result={result} t={t} pendingNote={pendingNote} onDefine={onDefine} onSwitch={onSwitch} graphIssue={graphIssue} curveRange={curveRange} hidden={!!look?.hidden || folderHidden} />
+          <ResultView literal={/^\s*(let\s+|const\s+)?[A-Za-z]\w*\s*=\s*[-−]?\d*\.?\d+\s*$/.test(source)} result={result} t={t} pendingNote={pendingNote} onDefine={onDefine} onSwitch={onSwitch} graphIssue={graphIssue} curveRange={curveRange} hidden={!!look?.hidden || folderHidden} />
         </output>
         {hint && (
           <p className="line__hint">

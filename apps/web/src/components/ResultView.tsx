@@ -2,6 +2,7 @@ import { formatComplex, formatReal, formatValue, polygonArea, type Complex, type
 import type { ReactNode } from 'react';
 import type { Strings } from '../i18n';
 import { MathText } from './MathText';
+import { fractionsIn, useNumberForm, type NumberForm } from '../numberForm';
 
 /** A figure in words, in the interface language: Triangle, area 6 / 삼각형, 넓이 6 */
 function shapeText(s: Shape, t: Strings): string {
@@ -68,7 +69,11 @@ function MatrixView({ value }: { value: Extract<Value, { kind: 'matrix' }> }) {
   );
 }
 
-export function ResultView({
+export function ResultView(props: Parameters<typeof ResultViewInner>[0]) {
+  return <ResultViewInner {...props} form={useNumberForm()} />;
+}
+
+function ResultViewInner({
   result,
   t,
   pendingNote,
@@ -77,7 +82,12 @@ export function ResultView({
   graphIssue,
   curveRange,
   hidden,
+  form = 'exact',
+  literal,
 }: {
+  /** the line is a number as typed (let a = -1.1): shown as typed */
+  literal?: boolean;
+  form?: NumberForm;
   result: Result | undefined;
   t: Strings;
   /** text under a pending result; null shows the bar alone */
@@ -112,7 +122,7 @@ export function ResultView({
           </span>
         );
       }
-      if (result.exact) {
+      if (result.exact && form === 'exact') {
         // exact form first, the decimal under it
         return (
           <span className="result__stack">
@@ -125,11 +135,26 @@ export function ResultView({
           </span>
         );
       }
+      // exact view: decimals that are fractions read as fractions, (2.2, 4.048) → (11/5, 506/125)
+      const plain = formatValue(v);
+      const asFractions = form === 'exact' && !literal && !result.numeric && (v.kind === 'num' || v.kind === 'point') ? fractionsIn(plain) : plain;
+      if (asFractions !== plain) {
+        return (
+          <span className="result__stack">
+            <span className="result__value">
+              <MathText text={asFractions} />
+            </span>
+            <span className="result__note">
+              = <NumberText text={plain} />
+            </span>
+          </span>
+        );
+      }
       return (
         <span className="result__stack">
           <span className="result__value">
             {result.numeric && '≈ '}
-            <NumberText text={formatValue(v)} />
+            <NumberText text={plain} />
           </span>
           {result.numeric && <span className="result__note">{t.numericNote}</span>}
         </span>
