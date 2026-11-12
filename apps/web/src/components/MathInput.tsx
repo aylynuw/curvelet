@@ -101,6 +101,16 @@ export function MathInput({
         clearTimeout(timer);
         return;
       }
+      // ' is a prime (f'(x)), typed as the character itself: MathLive reads keys by their place on
+      // the keyboard, and with a Korean input source it can take the ' key for /, a division
+      if (!e.metaKey && !e.ctrlKey && !e.altKey && (e.key === "'" || (e.key === 'Process' && e.code === 'Quote' && !e.shiftKey))) {
+        e.preventDefault();
+        e.stopPropagation();
+        word = '';
+        pending = null;
+        mf.executeCommand(['typedText', "'"]);
+        return;
+      }
       const letter = /^[a-zA-Z]$/.test(e.key) && !e.metaKey && !e.ctrlKey && !e.altKey;
       const modifier = ['Shift', 'Alt', 'Meta', 'Control', 'CapsLock'].includes(e.key);
       // editing or moving away isn't finishing the word: it stays as typed
