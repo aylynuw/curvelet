@@ -93,16 +93,20 @@ const TYPESET: Record<string, (args: string[], rest: Token[]) => string | null> 
   nCr: ([n, r, ...more]) => (n !== undefined && r !== undefined && more.length === 0 ? `\\binom{${n}}{${r}}` : null),
   root: ([x, n, ...more]) => (x !== undefined && n !== undefined && more.length === 0 ? `\\sqrt[${n}]{${x}}` : null),
   // sum(seq(f, n, a, b)) is Σ; sum of a list stays sum([…])
-  sum: (args, rest) => {
-    if (args.length !== 1 || rest[1]?.value !== 'seq') return null;
-    const m = /^\\operatorname\{seq\}\((.*)\)$/s.exec(args[0]!);
-    if (!m) return null;
-    const inner = splitTop(m[1]!);
-    if (inner.length !== 4 || !isVar(inner[1])) return null;
-    const [f, n, a, b] = inner as [string, string, string, string];
-    return `\\sum_{${n}=${a}}^{${b}}${paren(f)}`;
-  },
+  sum: (args, rest) => bigOperator('\\sum', args, rest),
+  prod: (args, rest) => bigOperator('\\prod', args, rest),
 };
+
+/** sum(seq(f, n, a, b)) as Σ, prod(seq(…)) as Π; a list's sum stays sum([…]) */
+function bigOperator(op: string, args: string[], rest: Token[]): string | null {
+  if (args.length !== 1 || rest[1]?.value !== 'seq') return null;
+  const m = /^\\operatorname\{seq\}\((.*)\)$/s.exec(args[0]!);
+  if (!m) return null;
+  const inner = splitTop(m[1]!);
+  if (inner.length !== 4 || !isVar(inner[1])) return null;
+  const [f, n, a, b] = inner as [string, string, string, string];
+  return `${op}_{${n}=${a}}^{${b}}${paren(f)}`;
+}
 
 /** a,b,c at the top level of a LaTeX string (not inside braces or brackets) */
 function splitTop(tex: string): string[] {
@@ -372,6 +376,9 @@ const SYMBOL: Record<string, string> = {
 const SPACES = new Set(['\\:', '\\,', '\\;', '\\ ', '~', '\\quad', '\\qquad', '\\>', '\\!']);
 const WORD_CMD: Record<string, string> = { '\\pi': 'pi', '\\tau': 'tau', '\\infty': 'inf', '\\exponentialE': 'e', '\\imaginaryI': 'i', '\\differentialD': 'd' };
 
+const OPENERS = new Set(['{', '\\left', '\\begin', '(', '[', '\\lbrack', '\\{', '\\lbrace']);
+const CLOSERS = new Set(['}', '\\right', '\\end', ')', ']', '\\rbrack', '\\}', '\\rbrace']);
+
 class LatexReader {
   i = 0;
   constructor(private s: string) {}
@@ -465,8 +472,9 @@ class LatexReader {
         this.i = at;
         return this.s.slice(start, at);
       }
-      if (t === '{' || t === '\\left' || t === '\\begin') depth++;
-      else if (t === '}' || t === '\\right' || t === '\\end') depth--;
+      // every kind of bracket nests: a comma inside [1, 2, 3] or f(a, b) doesn't end the body
+      if (OPENERS.has(t)) depth++;
+      else if (CLOSERS.has(t)) depth--;
     }
     return this.s.slice(start);
   }
@@ -505,7 +513,8 @@ function convert(latex: string): Piece[] {
         : /^(.*?)(?:\\[,:;!]|\s)*d\s*([a-zA-Z])\s*$()/s.exec(rest);
       if (m) {
         const v = m[2]!;
-        const bounds = sub !== undefined && sup !== undefined ? `, ${toText(sub)}, ${toText(sup)}` : '';
+        // ∫ with its bound boxes still empty is an indefinite integral
+        const bounds = sub?.trim() && sup?.trim() ? `, ${toText(sub)}, ${toText(sup)}` : '';
         push(`integrate(${toText(m[1]!)}, ${v}${bounds})`, 'cmd');
         pieces.push(...convert(m[3]!));
       } else push(`integrate(${toText(rest)}, x)`, 'cmd');
@@ -515,14 +524,16 @@ function convert(latex: string): Piece[] {
       const { sub } = r.limits();
       const m = /^\s*([a-zA-Z]|\\[a-zA-Z]+)\s*(?:\\to|\\rightarrow|\\longrightarrow|→)\s*(.*)$/s.exec(sub ?? '');
       const body = toText(r.body());
-      push(m ? `limit(${body}, ${toText(m[1]!)}, ${toText(m[2]!)})` : `limit(${body})`, 'cmd');
+      push(m && m[2]!.trim() ? `limit(${body}, ${toText(m[1]!)}, ${toText(m[2]!)})` : `limit(${body})`, 'cmd');
       continue;
     }
-    if (t === '\\sum') {
+    if (t === '\\sum' || t === '\\prod') {
+      const fn = t === '\\sum' ? 'sum' : 'prod';
       const { sub, sup } = r.limits();
       const m = /^\s*([a-zA-Z])\s*=\s*(.*)$/s.exec(sub ?? '');
       const body = toText(r.body());
-      push(m && sup !== undefined ? `sum(seq(${body}, ${m[1]}, ${toText(m[2]!)}, ${toText(sup)}))` : `sum(${body})`, 'cmd');
+      // Σ over a range; with the bounds still empty, the sum (or product) of a list
+      push(m && m[2]!.trim() && sup?.trim() ? `${fn}(seq(${body}, ${m[1]}, ${toText(m[2]!)}, ${toText(sup)}))` : `${fn}(${body})`, 'cmd');
       continue;
     }
     if (t === '\\binom' || t === '\\dbinom' || t === '\\tbinom') {

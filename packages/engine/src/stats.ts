@@ -47,6 +47,7 @@ function pair(xv: Value | undefined, yv: Value | undefined, fname: string, min: 
 // --- descriptive statistics ------------------------------------------------------
 
 const sum = (xs: number[]) => xs.reduce((s, x) => s + x, 0);
+const product = (xs: number[]) => xs.reduce((p, x) => p * x, 1);
 export const mean = (xs: number[]) => sum(xs) / xs.length;
 
 /** Sum of squared deviations, two-pass for accuracy. */
@@ -214,6 +215,8 @@ export const STATS_FUNCTIONS: Record<string, ValueBuiltin> = {
   mean: one('mean', mean),
   median: one('median', (xs) => quantile(xs, 0.5)),
   sum: one('sum', sum),
+  /** prod([2, 3, 4]) = 24; prod(seq(k, k, 1, 5)) = 5! */
+  prod: one('prod', product),
   count: one('count', (xs) => xs.length, 0),
   /** sample variance and standard deviation (n − 1), like spreadsheets' VAR.S / STDEV.S */
   var: one('var', (xs) => ss(xs) / (xs.length - 1), 2),

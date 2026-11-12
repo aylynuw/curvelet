@@ -106,6 +106,7 @@ describe('textbook forms', () => {
     'diff(sin(x), x, 2)',
     'limit(sin(x)/x, x, 0)',
     'sum(seq(1/n^2, n, 1, 100))',
+    'prod(seq(k, k, 1, 5))',
     'nCr(5, 2)',
     'root(32, 5)',
     '[[1, 2], [3, 4]]',
@@ -136,7 +137,13 @@ describe('textbook forms', () => {
     expect(latexToText('x\\ne 2')).toBe('x ≠ 2');
     expect(latexToText('3!=6')).toBe('3! = 6');
     expect(latexToText('\\int_{0}^{1}\\operatorname{round}(x)\\,\\mathrm{d}x')).toBe('integrate(round(x), x, 0, 1)');
-    expect(latexToText('\\int_{\\placeholder{}}^{\\placeholder{}}\\placeholder{}\\,\\mathrm{d}x')).toBe('integrate(, x,,)');
+    expect(latexToText('\\int_{\\placeholder{}}^{\\placeholder{}}\\placeholder{}\\,\\mathrm{d}x')).toBe('integrate(, x)');
+    // the typed shortcuts with some boxes left empty still give a working line
+    expect(latexToText('\\int_{\\placeholder{}}^{\\placeholder{}}x^2\\,\\mathrm{d}x')).toBe('integrate(x^2, x)');
+    expect(latexToText('\\sum_{n=\\placeholder{}}^{\\placeholder{}}\\lbrack 1,2,3\\rbrack')).toBe('sum([1, 2, 3])');
+    expect(latexToText('\\sum_{n=1}^{10}n^2')).toBe('sum(seq(n^2, n, 1, 10))');
+    expect(latexToText('\\prod_{k=1}^{5}k')).toBe('prod(seq(k, k, 1, 5))');
+    expect(latexToText('\\lim_{x\\to 0}\\frac{\\sin(x)}{x}')).toBe('limit(sin(x)/x, x, 0)');
     // a plain fraction with d in it stays a fraction
     expect(latexToText('\\frac{d}{2}')).toBe('d/2');
   });

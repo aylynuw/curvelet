@@ -435,7 +435,9 @@ textarea.input { resize: vertical; line-height: 1.5; }
 .formula__toggle:focus-visible { outline: 2px solid var(--color-focus); outline-offset: -2px; }
 @media (hover: hover) { .formula__toggle:hover { background: var(--color-paper-2); } }
 .formula__name { font-size: var(--text-sm); font-weight: 500; }
-.formula__math.tex { font-size: var(--text-md); color: var(--color-ink-2); max-width: 100%; overflow-x: auto; overflow-y: hidden; }
+.formula__math.tex { box-sizing: border-box; display: block; font-size: var(--text-md); color: var(--color-ink-2); max-width: 100%; overflow-x: auto; overflow-y: hidden; scrollbar-width: thin;
+  /* radicals and powers reach above and below the line: room for them inside the scroll box, so nothing is clipped */
+  padding: 0.45em 0.25em 0.55em 0; margin: -0.3em -0.25em -0.4em 0; }
 .formula__star { color: var(--color-muted); }
 .formula__star[aria-pressed="true"] { color: var(--color-curve-5); background: transparent; }
 .formula__body { display: flex; flex-direction: column; gap: var(--space-sm); padding: 0 var(--space-md) var(--space-md); }

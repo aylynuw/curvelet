@@ -22,10 +22,29 @@ export const SHORTCUTS: Record<string, string> = {
   ...Object.fromEntries(GREEK.map((g) => [g, `\\${g}`])),
   sqrt: '\\sqrt{#?}',
   cbrt: '\\sqrt[3]{#?}',
+  nthroot: '\\sqrt[#?]{#?}',
   infty: '\\infty',
+  infinity: '\\infty',
+  // the big operators as Desmos and LaTeX users type them: the textbook form, a box to fill for each part
+  // (int and lim are in WORD_SHORTCUTS: they begin integrate and limit)
+  sum: '\\sum_{n=#?}^{#?}#?',
+  prod: '\\prod_{n=#?}^{#?}#?',
+  binom: '\\binom{#?}{#?}',
+  '->': '\\to',
   '<=': '\\le',
   '>=': '\\ge',
+  '!=': '\\ne',
   '*': '\\cdot',
+};
+
+/**
+ * Shortcuts that are also the start of a longer name (int → integrate,
+ * lim → limit). They wait for the next key: a letter that keeps spelling the
+ * longer name types the word, anything else (or a pause) makes the symbol.
+ */
+export const WORD_SHORTCUTS: Record<string, string> = {
+  int: '\\int_{#?}^{#?}#?\\,\\mathrm{d}x',
+  lim: '\\lim_{x\\to #?}#?',
 };
 
 /** Typeset LaTeX as static markup (results, history, the reference). */

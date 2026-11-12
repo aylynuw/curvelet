@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useRef } from 'react';
-import { latexToText, textToLatex } from '../math/latex';
+import { KNOWN_NAMES, latexToText, textToLatex } from '../math/latex';
 import { useMathLive, type MathfieldElement } from '../math/mathlive';
 
 export type MoveOut = 'up' | 'down';
@@ -52,7 +52,7 @@ export function MathInput({
   const ml = useMathLive();
   useLayoutEffect(() => {
     if (!ml) return;
-    const { MathfieldElement, SHORTCUTS } = ml;
+    const { MathfieldElement, SHORTCUTS, WORD_SHORTCUTS } = ml;
     const host = hostRef.current!;
     const mf = new MathfieldElement();
     mf.className = 'mathfield';
@@ -78,7 +78,49 @@ export function MathInput({
     };
     // x_1 + 2: a subscript holds a name's letters and digits; anything else leaves it
     let inSubscript = false;
+    // the letters typed in a row, for int and lim (see WORD_SHORTCUTS)
+    let word = '';
+    let pending: string | null = null;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const convert = () => {
+      clearTimeout(timer);
+      const w = pending;
+      pending = null;
+      word = '';
+      if (!w || !mf.hasFocus()) return;
+      for (let k = 0; k < w.length; k++) mf.executeCommand('deleteBackward');
+      mf.executeCommand(['insert', WORD_SHORTCUTS[w]!, { selectionMode: 'placeholder', format: 'latex' }]);
+    };
     const onKey = (e: KeyboardEvent) => {
+      // typing a LaTeX command after \ (\int, \frac, \alpha): MathLive's own; Enter, Tab or space finish it
+      if (mf.mode === 'latex') {
+        word = '';
+        pending = null;
+        clearTimeout(timer);
+        return;
+      }
+      const letter = /^[a-zA-Z]$/.test(e.key) && !e.metaKey && !e.ctrlKey && !e.altKey;
+      if (pending) {
+        const continues = letter && KNOWN_NAMES.some((n) => n.length > pending!.length && n.startsWith(word + e.key));
+        if (!continues) {
+          const space = e.key === ' ';
+          convert();
+          // a space only asked for the symbol
+          if (space) {
+            e.preventDefault();
+            e.stopPropagation();
+            return;
+          }
+        }
+      }
+      if (letter) {
+        word += e.key;
+        clearTimeout(timer);
+        pending = WORD_SHORTCUTS[word] ? word : null;
+        if (pending) timer = setTimeout(convert, 700);
+      } else if (!['Shift', 'Alt', 'Meta', 'Control', 'CapsLock'].includes(e.key)) {
+        word = '';
+      }
       if (e.key === '_') inSubscript = true;
       else if (inSubscript && !/^[\p{L}\p{N}]$/u.test(e.key) && !['Shift', 'Backspace', 'Alt', 'Meta', 'Control'].includes(e.key)) {
         inSubscript = false;
@@ -115,6 +157,7 @@ export function MathInput({
     mf.addEventListener('move-out', onMove);
     mf.addEventListener('focus', onFocusIn);
     return () => {
+      clearTimeout(timer);
       mf.removeEventListener('input', onInput);
       mf.removeEventListener('keydown', onKey, { capture: true });
       mf.removeEventListener('move-out', onMove);

@@ -17,6 +17,8 @@ describe('descriptive statistics', () => {
     ['median([3, 1, 2])', '2'],
     ['median([1, 2, 3, 4])', '2.5'],
     ['sum([1, 2, 3])', '6'],
+    ['prod([2, 3, 4])', '24'],
+    ['prod(seq(k, k, 1, 5))', '120'],
     ['count([1, 2, 3])', '3'],
     ['pvar(d)', '4'],
     ['pstdev(d)', '2'],
