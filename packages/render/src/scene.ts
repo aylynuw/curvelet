@@ -30,6 +30,8 @@ export interface SceneOptions {
   pointLabels?: boolean;
   /** how a point's coordinates are written beside it (default: to 3 decimals) */
   coord?: (n: number) => string;
+  /** exam guides changed by hand, by `id:x` / `id:y`: new text, or null to leave the guide out */
+  guideText?: Record<string, string | null>;
 }
 
 const PI_STEPS: [number, number][] = [[1, 12], [1, 6], [1, 4], [1, 2], [1, 1], [2, 1], [4, 1], [8, 1], [16, 1], [32, 1]];
@@ -61,6 +63,8 @@ export interface Label {
   anchor: 'start' | 'middle' | 'end';
   baseline: 'top' | 'middle' | 'bottom';
   series?: number;
+  /** exam guides: which point and axis the number belongs to (id:x or id:y) */
+  ref?: string;
 }
 
 /** Everything to draw, in screen pixels. Canvas and SVG renderers both read this. */
@@ -328,17 +332,18 @@ export function buildScene(graphables: Graphable[], v: Viewport, opts: SceneOpti
     if (exam) {
       if (g.label) scene.labels.push({ ...away(px, py, 8, g.label), text: g.label, kind: 'point' });
       // dashed guides down/across to the axes, with the coordinates written there
-      if (axisY !== null && Math.abs(py - axisY) > 1) {
+      const edits = opts.guideText ?? {};
+      const xRef = `${g.id}:x`;
+      const yRef = `${g.id}:y`;
+      if (axisY !== null && Math.abs(py - axisY) > 1 && edits[xRef] !== null) {
         scene.guides.push(px, py, px, axisY);
-        if (g.x !== 0) {
-          scene.labels.push({ x: px, y: axisY + (g.y >= 0 ? 5 : -5), text: coordinate(g.x), kind: 'guide', anchor: 'middle', baseline: g.y >= 0 ? 'top' : 'bottom' });
-        }
+        const text = edits[xRef] ?? (g.x !== 0 ? (opts.coord ?? coordinate)(g.x) : '');
+        if (text) scene.labels.push({ x: px, y: axisY + (g.y >= 0 ? 5 : -5), text, kind: 'guide', anchor: 'middle', baseline: g.y >= 0 ? 'top' : 'bottom', ref: xRef });
       }
-      if (axisX !== null && Math.abs(px - axisX) > 1) {
+      if (axisX !== null && Math.abs(px - axisX) > 1 && edits[yRef] !== null) {
         scene.guides.push(px, py, axisX, py);
-        if (g.y !== 0) {
-          scene.labels.push({ x: axisX + (g.x >= 0 ? -6 : 6), y: py, text: coordinate(g.y), kind: 'guide', anchor: g.x >= 0 ? 'end' : 'start', baseline: 'middle' });
-        }
+        const text = edits[yRef] ?? (g.y !== 0 ? (opts.coord ?? coordinate)(g.y) : '');
+        if (text) scene.labels.push({ x: axisX + (g.x >= 0 ? -6 : 6), y: py, text, kind: 'guide', anchor: g.x >= 0 ? 'end' : 'start', baseline: 'middle', ref: yRef });
       }
     } else if (opts.pointLabels !== false) {
       const c = opts.coord ?? coordinate;
@@ -472,6 +477,13 @@ function angleMark(a: Pt, b: Pt, c: Pt, right: boolean, v: Viewport, r: number):
     line.push(bx + r * Math.cos(t), by + r * Math.sin(t));
   }
   return { line, labelAt };
+}
+
+/** an exam label that is a fraction, set as one (sign, numerator, denominator) */
+export function stackedFraction(l: Pick<Label, 'kind' | 'text'>): [string, string, string] | null {
+  if (l.kind !== 'guide') return null;
+  const m = l.text.match(/^([\u2212-]?)(\d+)\/(\d+)$/);
+  return m ? [m[1] ? '\u2212' : '', m[2]!, m[3]!] : null;
 }
 
 /** Point coordinates on the figure: whole numbers as they are, others to 3 decimals. */

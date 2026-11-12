@@ -61,6 +61,8 @@ export interface FigureOptions {
   piTicks?: boolean;
   /** coordinates beside points (default on) */
   pointLabels?: boolean;
+  /** exam guides changed by hand: new text by `id:x` / `id:y`, or null for one taken out */
+  guides?: Record<string, string | null>;
 }
 
 const GRAPH_EXAMPLES = ['y = x^2 - 2x', 'x^2 + y^2 = 9', 'r = 1 + cos(θ)', '(cos(3t), sin(2t))', 'y < sin(x)', 'let P = (1, -1)'];
@@ -166,6 +168,18 @@ export function GraphPanel({
   const pressedAt = useRef<{ x: number; y: number; moved: boolean } | null>(null);
   /** the name of the point being dragged */
   const dragging = useRef<string | null>(null);
+  const [overPoint, setOverPoint] = useState(false);
+  /** exam lengths: where each is, the one picked, the one being retyped */
+  const [guideSpots, setGuideSpots] = useState<{ ref: string; text: string; x: number; y: number; w: number; h: number }[]>([]);
+  const [guideSel, setGuideSel] = useState<string | null>(null);
+  const [guideEdit, setGuideEdit] = useState<string | null>(null);
+  const setGuide = (ref: string, text: string | null | undefined) => {
+    const next = { ...(figure.guides ?? {}) };
+    if (text === undefined) delete next[ref];
+    else next[ref] = text;
+    onFigure({ ...figure, guides: next });
+  };
+  const [tool, setTool] = useState<'select' | 'point' | 'pen'>('select');
   const viewport: Viewport = { ...view, ...size };
   const exam = figure.style === 'exam';
   const view3d = figure.style === '3d';
@@ -189,6 +203,7 @@ export function GraphPanel({
     piTicks: figure.piTicks,
     pointLabels: figure.pointLabels,
     // fractions beside points when numbers are shown exactly (11/5, not 2.2)
+    guideText: figure.guides,
     coord: numberForm === 'exact' ? (n: number) => (Number.isInteger(n) ? String(n) : (toFraction(n, 1000) ?? coordinate(n))) : undefined,
   };
 
@@ -217,6 +232,18 @@ export function GraphPanel({
     // viewport is rebuilt from view and size
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [graphables, selectedGraph, view, size],
+  );
+  /** with the point tool, every curve's roots, turning points and crossings are places a point snaps to */
+  const snapPois = useMemo(
+    () =>
+      tool === 'point' && size.width
+        ? graphables
+            .filter((g) => g.kind === 'curve' && g.dir === 'y')
+            .slice(0, 8)
+            .flatMap((g) => pointsOfInterest(graphables, viewport, g.id))
+        : [],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [graphables, tool, view, size],
   );
   useEffect(() => setPinned(null), [selected]);
 
@@ -338,7 +365,6 @@ export function GraphPanel({
   };
   // the pen: anchors in plane coordinates, each with one handle (the other mirrors it)
   /** the graph's tools: select (pick, move, reshape), point (drop a point), pen (draw a curve) */
-  const [tool, setTool] = useState<'select' | 'point' | 'pen'>('select');
   const penMode = tool === 'pen';
   const setPenMode = (on: boolean) => setTool(on ? 'pen' : 'select');
   const chooseTool = (next: 'select' | 'point' | 'pen') => {
@@ -401,6 +427,20 @@ export function GraphPanel({
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     const scene = buildScene(drawn, viewport, sceneOpts);
     sceneRef.current = scene;
+    // the exam's lengths, as boxes the select tool can pick
+    setGuideSpots(
+      exam
+        ? scene.labels.flatMap((l) => {
+            if (!l.ref) return [];
+            const tall = /^[\u2212-]?\d+\/\d+$/.test(l.text);
+            const h = tall ? 30 : 18;
+            const w = Math.max(16, (tall ? Math.max(...l.text.replace(/^[\u2212-]/, '').split('/').map((s) => s.length)) + 1.5 : l.text.length) * 8.5);
+            const x = l.anchor === 'start' ? l.x : l.anchor === 'middle' ? l.x - w / 2 : l.x - w;
+            const y = l.baseline === 'top' ? l.y : l.baseline === 'middle' ? l.y - h / 2 : l.y - h;
+            return [{ ref: l.ref, text: l.text, x, y, w, h }];
+          })
+        : [],
+    );
     const theme = exam ? EXAM_THEME : readTheme(wrapRef.current!);
     drawScene(ctx, scene, theme, (c) => {
       for (const p of pictures) {
@@ -460,7 +500,7 @@ export function GraphPanel({
   // (points of interest already show their own)
   useEffect(() => {
     const scene = sceneRef.current;
-    if (!scene || exam || penMode || (!selectedGraph && tool !== 'point')) return setCrossings([]);
+    if (!scene || penMode || (exam && tool !== 'point') || (!selectedGraph && tool !== 'point')) return setCrossings([]);
     const pieces = new Map<string, number[]>();
     for (const c of scene.curves) {
       const id = c.id.split(':')[0]!;
@@ -601,7 +641,12 @@ export function GraphPanel({
     const map = pointers.current;
     const prev = map.get(e.pointerId);
     if (!prev) {
-      if (e.pointerType === 'mouse') setHover({ px: p.x, py: p.y });
+      if (e.pointerType === 'mouse') {
+        setHover({ px: p.x, py: p.y });
+        // over a point that can be dragged, the cursor says so instead of the panning hand
+        const over = tool !== 'pen' && graphables.some((g) => g.kind === 'point' && g.drag && g.label && Math.hypot(toPx(viewport, g.x) - p.x, toPy(viewport, g.y) - p.y) <= 10);
+        if (over !== overPoint) setOverPoint(over);
+      }
       return;
     }
     const press = pressedAt.current;
@@ -628,7 +673,7 @@ export function GraphPanel({
   /** where the point tool puts a point: on a point of interest or crossing, on a curve y = f(x), else on the grid */
   const pointAt = (px: number, py: number, free: boolean, touch: boolean): [number, number] => {
     const reach = touch ? 20 : 10;
-    const near = [...pois, ...crossings].find((q) => Math.hypot(toPx(viewport, q.x) - px, toPy(viewport, q.y) - py) < reach);
+    const near = [...pois, ...crossings, ...snapPois].find((q) => Math.hypot(toPx(viewport, q.x) - px, toPy(viewport, q.y) - py) < reach);
     if (near) return [near.x, near.y];
     const [x0, y0] = planeAt(viewport, px, py);
     const step = gridStep(viewport.scale).minor / (free ? 10 : 2);
@@ -688,6 +733,7 @@ export function GraphPanel({
     }
     const pic = hit === null ? pictureAt(p.x, p.y) : null;
     setPicSel(pic);
+    setGuideSel(null);
     onSelect(pic ? null : hit);
     if (e.pointerType === 'touch') setHover({ px: p.x, py: p.y });
   };
@@ -711,6 +757,13 @@ export function GraphPanel({
     } else if ((e.key === 'Enter' || e.key === 'Escape') && pen.length) {
       e.preventDefault();
       finishPen(false);
+    } else if ((e.key === 'Delete' || e.key === 'Backspace') && guideSel && exam) {
+      e.preventDefault();
+      setGuide(guideSel, null);
+      setGuideSel(null);
+    } else if (e.key === 'Enter' && guideSel && exam) {
+      e.preventDefault();
+      setGuideEdit(guideSel);
     } else if ((e.key === 'Delete' || e.key === 'Backspace') && picSel) {
       e.preventDefault();
       setPictures((ps) => ps.filter((p) => p.id !== picSel));
@@ -844,6 +897,82 @@ export function GraphPanel({
     );
   };
 
+  const hiddenGuides = Object.values(figure.guides ?? {}).filter((v) => v === null).length;
+  /** the exam's lengths: pick one to delete it, double-click (or Edit) to write it another way */
+  const guideOverlay = () => (
+    <>
+      {guideSpots.map((s) =>
+        guideEdit === s.ref ? (
+          <input
+            key={s.ref}
+            className="gguide__input"
+            style={{ left: s.x - 6, top: s.y + s.h / 2 - 15, width: Math.max(64, s.w + 24) }}
+            defaultValue={s.text.replace(/\u2212/g, '-')}
+            autoFocus
+            onFocus={(e) => e.currentTarget.select()}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                const v = e.currentTarget.value.trim();
+                setGuide(s.ref, v ? v : null);
+                setGuideEdit(null);
+                wrapRef.current?.querySelector<HTMLCanvasElement>('canvas')?.focus();
+              } else if (e.key === 'Escape') {
+                setGuideEdit(null);
+              }
+            }}
+            onBlur={() => setGuideEdit(null)}
+          />
+        ) : (
+          <button
+            key={s.ref}
+            type="button"
+            className="gguide"
+            aria-pressed={guideSel === s.ref}
+            aria-label={t.guideLabel(s.text)}
+            style={{ left: s.x - 3, top: s.y - 2, width: s.w + 6, height: s.h + 4 }}
+            onClick={() => {
+              setGuideSel(s.ref);
+              onSelect(null);
+            }}
+            onDoubleClick={() => setGuideEdit(s.ref)}
+            onKeyDown={(e) => {
+              if (e.key === 'Delete' || e.key === 'Backspace') {
+                e.preventDefault();
+                setGuide(s.ref, null);
+                setGuideSel(null);
+              }
+            }}
+          />
+        ),
+      )}
+      {(() => {
+        const s = guideSpots.find((q) => q.ref === guideSel);
+        if (!s || guideEdit) return null;
+        return (
+          <div className="gguide__menu" style={{ left: s.x + s.w / 2, top: s.y - 6 }}>
+            <button type="button" className="btn btn--small" onClick={() => setGuideEdit(s.ref)}>
+              {t.guideEdit}
+            </button>
+            <button
+              type="button"
+              className="btn btn--small"
+              onClick={() => {
+                setGuide(s.ref, null);
+                setGuideSel(null);
+              }}
+            >
+              {t.guideDelete}
+            </button>
+            {typeof figure.guides?.[s.ref] === 'string' && (
+              <button type="button" className="btn btn--small" onClick={() => setGuide(s.ref, undefined)}>
+                {t.guideReset}
+              </button>
+            )}
+          </div>
+        );
+      })()}
+    </>
+  );
   /** the curve being drawn: its pieces, handles, and the next piece to the cursor */
   const penOverlay = () => {
     const X = (x: number) => toPx(viewport, x);
@@ -922,7 +1051,7 @@ export function GraphPanel({
       >
         <canvas
           ref={canvasRef}
-          className={`graph__canvas${boxMode || tool !== 'select' ? ' graph__canvas--box' : ''}`}
+          className={`graph__canvas${overPoint ? ' graph__canvas--point' : boxMode || tool !== 'select' ? ' graph__canvas--box' : ''}`}
           tabIndex={0}
           role="img"
           aria-label={graphables.length ? t.graphOf(described) : t.graphEmptyLabel}
@@ -956,7 +1085,8 @@ export function GraphPanel({
           </div>
         )}
         {!penMode && !exam && selectedGraph?.kind === 'shape' && shapeOverlay()}
-        {!penMode && !exam &&
+        {exam && tool === 'select' && guideOverlay()}
+        {!penMode && (!exam || tool === 'point') &&
           crossings.map((q) => (
             <button
               key={`${q.x},${q.y}`}
@@ -968,7 +1098,12 @@ export function GraphPanel({
               onClick={() => onAddPoint(q.x, q.y)}
             />
           ))}
-        {tool === 'point' && !exam && (
+        {tool === 'point' && hover && (() => {
+          // where a click would put the point, snapped to crossings, roots and curves
+          const [x, y] = pointAt(hover.px, hover.py, false, false);
+          return <span className="gghost" aria-hidden="true" style={{ left: toPx(viewport, x), top: toPy(viewport, y) }} />;
+        })()}
+        {tool === 'point' && (
           <div className="graph__pen-hint" role="status">
             <span>{t.pointToolHint}</span>
           </div>
@@ -1062,6 +1197,11 @@ export function GraphPanel({
             <button type="button" className="hud-btn" aria-pressed={figure.curveLabels} onClick={() => onFigure({ ...figure, curveLabels: !figure.curveLabels })}>
               {t.curveLabels}
             </button>
+            {hiddenGuides > 0 && (
+              <button type="button" className="hud-btn" onClick={() => onFigure({ ...figure, guides: Object.fromEntries(Object.entries(figure.guides ?? {}).filter(([, v]) => v !== null)) })}>
+                {t.guidesBack(hiddenGuides)}
+              </button>
+            )}
           </>
         )}
         </div>

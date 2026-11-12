@@ -122,4 +122,19 @@ describe('graph entries', () => {
     const gs = graphs(['let A = (1, -2)', 'const B = (0, 0)', 'let M = midpoint(A, B)', '(3, 3)']);
     expect(gs.map((g) => g.kind === 'point' && g.drag === true)).toEqual([true, false, false, false]);
   });
+
+  it('drags fraction points and points that ride on a number', () => {
+    const ws = new Workspace();
+    ws.set('1', 'let a = 1');
+    ws.set('2', 'f(x) = x^2');
+    ws.set('3', 'P = (a, f(a))');
+    ws.set('4', 'Q = (11/5, -1/2)');
+    const drag = ws.graphables().filter((g) => g.kind === 'point').map((g) => g.kind === 'point' && g.drag === true);
+    expect(drag).toEqual([true, true]);
+    ws.movePoint('P', 2, 9, (n) => String(n));
+    expect(ws.source('1')).toBe('let a = 2');
+    expect(ws.graphables().find((g) => g.kind === 'point' && g.label === 'P')).toMatchObject({ x: 2, y: 4 });
+    ws.movePoint('Q', 1.5, 3, (n) => (n === 1.5 ? '3/2' : String(n)));
+    expect(ws.source('4')).toBe('Q = (3/2, 3)');
+  });
 });

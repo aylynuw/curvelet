@@ -186,14 +186,37 @@ export class Workspace {
     return this.set(id, `${kw}${name} = ${formatReal(value, 15)}`);
   }
 
-  /** Move a point written as let A = (x, y), as dragging it on the graph would. */
-  movePoint(name: string, x: number, y: number): string[] {
+  /**
+   * Move a point as dragging it on the graph would: A = (2, 3) is rewritten,
+   * and P = (a, f(a)) moves a, so the point slides along its curve.
+   * `write` sets how the numbers are written (fractions or decimals).
+   */
+  movePoint(name: string, x: number, y: number, write: (n: number) => string = (n) => formatReal(n, 15)): string[] {
     const id = this.owners.get(name);
     const def = id ? this.def(id) : null;
-    if (!id || !def || !draggable(def)) throw new MathError(`${name} is not a point that can be moved`);
-    const restrict = this.entries.get(id)!.source.match(/\{[^}]*\}\s*$/)?.[0];
-    const kw = /^\s*let\b/.test(this.entries.get(id)!.source) ? 'let ' : '';
-    return this.set(id, `${kw}${name} = (${formatReal(x, 15)}, ${formatReal(y, 15)})${restrict ? ` ${restrict}` : ''}`);
+    if (!id || !def) throw new MathError(`${name} is not a point that can be moved`);
+    if (draggable(def)) {
+      const restrict = this.entries.get(id)!.source.match(/\{[^}]*\}\s*$/)?.[0];
+      const kw = /^\s*let\b/.test(this.entries.get(id)!.source) ? 'let ' : '';
+      return this.set(id, `${kw}${name} = (${write(x)}, ${write(y)})${restrict ? ` ${restrict}` : ''}`);
+    }
+    const param = this.pointParam(def);
+    if (!param) throw new MathError(`${name} is not a point that can be moved`);
+    const pid = this.owners.get(param)!;
+    const kw = /^\s*let\b/.test(this.entries.get(pid)!.source) ? 'let ' : '';
+    const rest = this.entries.get(pid)!.source.match(/\{[^}]*\}\s*$/)?.[0];
+    return this.set(pid, `${kw}${param} = ${write(x)}${rest ? ` ${rest}` : ''}`);
+  }
+
+  /** P = (a, …): the plain number a that sets the point's x, if there is one */
+  private pointParam(def: Def): string | null {
+    if (def.params || def.body.type !== 'tuple' || def.body.items.length !== 2) return null;
+    const first = def.body.items[0]!;
+    if (first.type !== 'ident' || first.name === def.name) return null;
+    const pid = this.owners.get(first.name);
+    const pdef = pid ? this.def(pid) : null;
+    if (!pdef || !pdef.mutable || pdef.params || !plainNumber(pdef.body)) return null;
+    return first.name;
   }
 
   updateSettings(settings: Partial<EvalSettings>): string[] {
@@ -596,7 +619,7 @@ export class Workspace {
 
     const named = stmt.kind === 'define' ? { label: stmt.name } : {};
     if (r.status === 'value' && r.value.kind === 'point') {
-      const drag = stmt.kind === 'define' && draggable(stmt) ? { drag: true } : {};
+      const drag = stmt.kind === 'define' && (draggable(stmt) || this.pointParam(stmt)) ? { drag: true } : {};
       return { id, kind: 'point', x: r.value.x, y: r.value.y, ...named, ...drag };
     }
     if (r.status === 'value' && r.value.kind === 'shape') {
@@ -926,11 +949,18 @@ export class Workspace {
 
 // -----------------------------------------------------------------------------
 
-/** let A = (2, 3): a point given as plain numbers, so dragging it can rewrite the line */
+/** a number written out: 2, -3, 11/5, -7/10 */
+function plainNumber(n: Node): boolean {
+  if (n.type === 'num') return true;
+  if (n.type === 'unary') return plainNumber(n.arg);
+  if (n.type === 'binary' && n.op === '/') return plainNumber(n.left) && plainNumber(n.right);
+  return false;
+}
+
+/** A = (2, 3) or (11/5, -1/2): a point given as plain numbers, so dragging it can rewrite the line */
 function draggable(def: Def): boolean {
   if (!def.mutable || def.params || def.body.type !== 'tuple') return false;
-  const plain = (n: Node) => n.type === 'num' || (n.type === 'unary' && n.arg.type === 'num');
-  return def.body.items.every(plain);
+  return def.body.items.every(plainNumber);
 }
 
 /** `theta` and `θ` are the same polar angle */

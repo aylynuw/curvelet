@@ -123,6 +123,21 @@ describe('scenes', () => {
     expect(neg.labels.filter((l) => l.kind === 'guide').map((l) => l.text)).toEqual(['\u22123', '\u22121']);
   });
 
+  it('sets exam guide numbers as stacked fractions, and takes hand edits', () => {
+    const coord = (n: number) => (n === 2.2 ? '11/5' : n === -0.5 ? '-1/2' : String(n));
+    const g = graphs('let A = (2.2, -0.5)');
+    const s = buildScene(g, V, { style: 'exam', series: () => 0, coord });
+    expect(s.labels.filter((l) => l.kind === 'guide').map((l) => l.text)).toEqual(['11/5', '\u22121/2']);
+    const svg = sceneToSvg(s, EXAM_THEME);
+    expect(svg).toContain('>11</text>');
+    expect(svg).toContain('>5</text>');
+    expect(svg).toContain('>\u2212</text>');
+    const id = g[0]!.id;
+    const edited = buildScene(g, V, { style: 'exam', series: () => 0, coord, guideText: { [`${id}:x`]: null, [`${id}:y`]: 'k' } });
+    expect(edited.labels.filter((l) => l.kind === 'guide').map((l) => l.text)).toEqual(['k']);
+    expect(edited.guides).toHaveLength(4);
+  });
+
   it('writes an SVG with italic variables and raised exponents', () => {
     const s = buildScene(graphs('y = x^2'), V, { style: 'exam', series: () => 0 });
     const svg = sceneToSvg(s, EXAM_THEME);

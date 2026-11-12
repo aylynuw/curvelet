@@ -1,5 +1,5 @@
 import { dashPattern } from './look';
-import type { Scene } from './scene';
+import { stackedFraction, type Scene } from './scene';
 import { isMathLabel, mathRuns, type DrawTheme } from './theme';
 
 const r = (n: number) => String(Math.round(n * 100) / 100);
@@ -76,6 +76,26 @@ export function sceneToSvg(scene: Scene, theme: DrawTheme, underlay = ''): strin
     const halo = theme.halo && l.kind !== 'axis' ? ` stroke="${theme.halo}" stroke-width="3" stroke-linejoin="round" paint-order="stroke"` : '';
     const attrs = `x="${r(l.x)}" y="${r(l.y)}" text-anchor="${l.anchor}" dominant-baseline="${BASELINE[l.baseline]}" fill="${fill}"${halo}`;
     const size = l.kind === 'tick' && !exam ? ` font-size="${theme.fontSize - 3}"` : '';
+    const frac = exam ? stackedFraction(l) : null;
+    if (frac) {
+      // a stacked fraction; widths estimated from the digits
+      const [sign, num, den] = frac;
+      const size = theme.fontSize;
+      const fs = Math.round(size * 0.85);
+      const bar = Math.max(num.length, den.length) * fs * 0.55 + 4;
+      const sw = sign ? size * 0.6 : 0;
+      const w = sw + bar;
+      const h = fs * 2 + 4;
+      const cy = l.baseline === 'top' ? l.y + h / 2 : l.baseline === 'bottom' ? l.y - h / 2 : l.y;
+      const x0 = l.anchor === 'start' ? l.x : l.anchor === 'middle' ? l.x - w / 2 : l.x - w;
+      const cx = x0 + sw + bar / 2;
+      const font = ` font-family="${esc(theme.mathFont)}" fill="${fill}"${halo}`;
+      if (sign) out.push(`<text x="${r(x0)}" y="${r(cy + size * 0.32)}"${font}>${sign}</text>`);
+      out.push(`<text x="${r(cx)}" y="${r(cy - 3)}" text-anchor="middle" font-size="${fs}"${font}>${num}</text>`);
+      out.push(`<text x="${r(cx)}" y="${r(cy + 2 + fs * 0.78)}" text-anchor="middle" font-size="${fs}"${font}>${den}</text>`);
+      out.push(`<rect x="${r(x0 + sw)}" y="${r(cy - 0.5)}" width="${r(bar)}" height="1" fill="${fill}"/>`);
+      continue;
+    }
     if (exam && isMathLabel(l)) {
       const spans = mathRuns(l.text)
         .map((run, k, all) => {

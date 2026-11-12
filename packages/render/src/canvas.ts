@@ -1,5 +1,5 @@
 import { dashPattern } from './look';
-import type { Scene } from './scene';
+import { stackedFraction, type Scene } from './scene';
 import { isMathLabel, mathRuns, type DrawTheme } from './theme';
 
 function segs(ctx: CanvasRenderingContext2D, s: number[]) {
@@ -131,6 +131,40 @@ export function drawScene(ctx: CanvasRenderingContext2D, scene: Scene, theme: Dr
     const size = small ? theme.fontSize - 3 : theme.fontSize;
     ctx.fillStyle = small ? theme.muted : theme.ink;
     ctx.textBaseline = BASELINE[l.baseline];
+    const frac = exam ? stackedFraction(l) : null;
+    if (frac) {
+      // 11/5 printed as a stacked fraction, as an exam paper sets it
+      const [sign, num, den] = frac;
+      const fs = Math.round(size * 0.85);
+      ctx.font = `${fs}px ${theme.mathFont}`;
+      const bar = Math.max(ctx.measureText(num).width, ctx.measureText(den).width) + 4;
+      ctx.font = `${size}px ${theme.mathFont}`;
+      const sw = sign ? ctx.measureText(sign).width + 1 : 0;
+      const w = sw + bar;
+      const h = fs * 2 + 4;
+      const cy = l.baseline === 'top' ? l.y + h / 2 : l.baseline === 'bottom' ? l.y - h / 2 : l.y;
+      const x0 = l.anchor === 'start' ? l.x : l.anchor === 'middle' ? l.x - w / 2 : l.x - w;
+      const cx = x0 + sw + bar / 2;
+      const text = (s: string, x: number, y: number, font: string, align: CanvasTextAlign) => {
+        ctx.font = font;
+        ctx.textAlign = align;
+        if (theme.halo) {
+          ctx.save();
+          ctx.strokeStyle = theme.halo;
+          ctx.lineWidth = 3;
+          ctx.lineJoin = 'round';
+          ctx.strokeText(s, x, y);
+          ctx.restore();
+        }
+        ctx.fillText(s, x, y);
+      };
+      ctx.textBaseline = 'alphabetic';
+      if (sign) text(sign, x0, cy + size * 0.32, `${size}px ${theme.mathFont}`, 'left');
+      text(num, cx, cy - 3, `${fs}px ${theme.mathFont}`, 'center');
+      text(den, cx, cy + 2 + fs * 0.78, `${fs}px ${theme.mathFont}`, 'center');
+      ctx.fillRect(x0 + sw, cy - 0.5, bar, 1);
+      continue;
+    }
     const runs = exam && isMathLabel(l) ? mathRuns(l.text) : [{ text: l.text, italic: false }];
     const fontFor = (run: { italic: boolean; sup?: boolean }) =>
       `${run.italic ? 'italic ' : ''}${run.sup ? Math.round(size * 0.7) : size}px ${exam ? theme.mathFont : theme.font}`;

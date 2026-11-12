@@ -183,6 +183,7 @@ export function App() {
         ...(v.piTicks === true ? { piTicks: true } : {}),
         ...(v.pointLabels === false ? { pointLabels: false } : {}),
         ...(v.axes === false ? { axes: false } : {}),
+        ...(v.guides && typeof v.guides === 'object' ? { guides: v.guides as Record<string, string | null> } : {}),
       };
     } catch {
       return base;
@@ -190,11 +191,11 @@ export function App() {
   });
   useEffect(() => {
     try {
-      localStorage.setItem(GRAPH_KEY, JSON.stringify({ grid: figure.grid, piTicks: figure.piTicks, pointLabels: figure.pointLabels, axes: figure.axes }));
+      localStorage.setItem(GRAPH_KEY, JSON.stringify({ grid: figure.grid, piTicks: figure.piTicks, pointLabels: figure.pointLabels, axes: figure.axes, guides: figure.guides }));
     } catch {
       // kept for this visit only
     }
-  }, [figure.grid, figure.piTicks, figure.pointLabels, figure.axes]);
+  }, [figure.grid, figure.piTicks, figure.pointLabels, figure.axes, figure.guides]);
   const [notice, setNotice] = useState<{ text: string; link?: string; action?: { label: string; run: () => void } } | null>(null);
   // a new version downloaded in the background: offer to switch
   useEffect(
@@ -526,7 +527,7 @@ export function App() {
       lines: linesRef.current.filter(hasContent).map(lineData),
       geo: read(GEO_KEY),
       pictures,
-      figure: { grid: figure.grid, piTicks: figure.piTicks, pointLabels: figure.pointLabels, axes: figure.axes },
+      figure: { grid: figure.grid, piTicks: figure.piTicks, pointLabels: figure.pointLabels, axes: figure.axes, ...(figure.guides && Object.keys(figure.guides).length ? { guides: figure.guides } : {}) },
       settings,
       sheet,
       tool: modeRef.current === 'projects' ? lastTool.current : modeRef.current,
@@ -579,6 +580,7 @@ export function App() {
       piTicks: f.piTicks === true ? true : undefined,
       pointLabels: f.pointLabels === false ? false : undefined,
       axes: f.axes !== false,
+      guides: f.guides && typeof f.guides === 'object' ? (f.guides as Record<string, string | null>) : undefined,
     }));
     if (p.settings) changeSettings(p.settings);
     setSheet(p.sheet ? { ...defaultWorksheet(lang), ...(p.sheet as Partial<Worksheet>) } : defaultWorksheet(lang));
@@ -641,7 +643,7 @@ export function App() {
       return;
     }
     markRef.current();
-  }, [lines, figure.grid, figure.piTicks, figure.pointLabels, figure.axes, settings, sheet, docName, pictures]);
+  }, [lines, figure.grid, figure.piTicks, figure.pointLabels, figure.axes, figure.guides, settings, sheet, docName, pictures]);
   // ⌘S / Ctrl+S saves the project, wherever the focus is
   useEffect(() => {
     const onKey = (e: globalThis.KeyboardEvent) => {
@@ -697,11 +699,13 @@ export function App() {
 
   /** A point dragged on the graph: let A = (1, 2) becomes let A = (1.5, 2) */
   const movePoint = (name: string, x: number, y: number) => {
-    const id = ws.definitions().find((d) => d.name === name)?.id;
-    if (!id) return;
-    ws.movePoint(name, x, y);
-    const source = ws.source(id) ?? '';
-    setLines((ls) => ls.map((l) => (l.id === id ? { ...l, source } : l)));
+    if (!ws.definitions().some((d) => d.name === name)) return;
+    // the point's own line, or the number it rides on (P = (a, f(a)) moves a)
+    ws.movePoint(name, x, y, (n) => writeNumber(n, numberForm));
+    setLines((ls) => ls.map((l) => {
+      const source = ws.source(l.id);
+      return source !== undefined && source !== l.source ? { ...l, source } : l;
+    }));
   };
 
   // sliders an animation can sweep; the sweep sets the value, draws, and puts the line back
