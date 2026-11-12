@@ -289,10 +289,15 @@ export function textToLatex(text: string, { display = false }: { display?: boole
   const RIGHT: Record<string, string> = { ')': ')', ']': '\\rbrack ', '}': '\\rbrace ' };
   /** ( … ), or bare contents for a radical or an exponent. */
   const group = (open: string, close: string, bare = false): string => {
+    // a bracket straight after "(" or "," (a point inside a call: bezier((1, 2), …)) is written
+    // \left( … \right), or MathLive merges the two "((" and drops the inner pair
+    const before = tokens[i - 1];
+    const nested = open === '(' && before?.type === 'op' && (before.value === '(' || before.value === ',');
     i++; // open
     const inner = seq([close]);
     if (isOp(close)) i++;
-    return bare ? inner : `${LEFT[open]}${inner}${RIGHT[close]}`;
+    if (bare) return inner;
+    return nested ? `\\left(${inner}\\right)` : `${LEFT[open]}${inner}${RIGHT[close]}`;
   };
 
   /** [[1, 2], [3, 4]] as a matrix, or null (cursor unmoved) when it isn't a list of lists */

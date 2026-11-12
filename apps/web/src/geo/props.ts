@@ -48,6 +48,8 @@ export interface GeoProps {
   pointLabel: boolean;
   /** a picture keeps its proportions when its size is typed */
   imageRatio: boolean;
+  /** an angle with no whole number of degrees: as a decimal, or exactly with an inverse trig function (tan⁻¹2) */
+  angleForm: 'degree' | 'trig';
   /** label size */
   fontSize: number;
   /** variables (single letters) in italic */
@@ -77,6 +79,7 @@ export const BASE_PROPS: GeoProps = {
   arrows: 0,
   pointLabel: true,
   imageRatio: true,
+  angleForm: 'degree',
   fontSize: 0.36,
   italic: true,
   autoTicks: false,

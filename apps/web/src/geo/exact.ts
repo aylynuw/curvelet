@@ -84,10 +84,12 @@ export interface Measure {
   exact: Exact | null;
   pi?: boolean;
   kind: 'length' | 'area' | 'angle';
+  /** an angle's exact form as an inverse trig function, when its sides allow one */
+  trig?: string;
 }
 
 /** the text for a measure, and whether it is only approximate (no exact form for the asked format) */
-export function formatMeasure(m: Measure, p: Pick<GeoProps, 'format' | 'decimals' | 'unit'>): { text: string; approx: boolean } {
+export function formatMeasure(m: Measure, p: Pick<GeoProps, 'format' | 'decimals' | 'unit'> & Partial<Pick<GeoProps, 'angleForm'>>): { text: string; approx: boolean } {
   /** `trim`: in exact view a value with no exact form drops trailing zeros (4.4, not 4.40) */
   const decimal = (trim = false) => {
     const d = Math.max(0, Math.min(4, Math.round(p.decimals)));
@@ -97,6 +99,8 @@ export function formatMeasure(m: Measure, p: Pick<GeoProps, 'format' | 'decimals
   let text: string;
   let approx = false;
   if (m.kind === 'angle') {
+    const whole = m.exact && m.exact.c === 1 && m.exact.b === 1;
+    if (!whole && p.format !== 'decimal' && p.angleForm === 'trig' && m.trig) return { text: m.trig, approx: false };
     text = `${m.exact && m.exact.c === 1 && m.exact.b === 1 && p.format !== 'decimal' ? m.exact.a : decimal(p.format !== 'decimal')}°`;
     return { text, approx: !m.exact && p.format !== 'decimal' };
   }
@@ -126,4 +130,27 @@ export function mathText(raw: string): string {
     .replace(/(^|[^a-zA-Z])(theta|alpha|beta|gamma|phi|pi)(?![a-zA-Z])/g, (_, pre: string, w: string) => pre + greek[w]!)
     .replace(/\^\{?([0-9n-]+)\}?/g, (_, d: string) => [...d].map((ch) => sup[ch] ?? ch).join(''))
     .replace(/_\{?([0-9]+)\}?/g, (_, d: string) => [...d].map((ch) => sub[ch] ?? ch).join(''));
+}
+
+/**
+ * The angle at v between the rays to a and c as an inverse trig function, when
+ * it has an exact form: tan⁻¹ of the tangent for an acute angle (rational when
+ * the corners sit on the grid), cos⁻¹ of the cosine for an obtuse one.
+ */
+export function angleTrig(a: { x: number; y: number }, v: { x: number; y: number }, c: { x: number; y: number }): string | null {
+  const [ux, uy, wx, wy] = [a.x - v.x, a.y - v.y, c.x - v.x, c.y - v.y];
+  const dot = ux * wx + uy * wy;
+  const cross = Math.abs(ux * wy - uy * wx);
+  const lu = Math.hypot(ux, uy);
+  const lw = Math.hypot(wx, wy);
+  if (!lu || !lw || Math.abs(dot) < 1e-12 * lu * lw || cross < 1e-12 * lu * lw) return null;
+  const wrap = (t: string) => (t.includes('/') || (t.includes('√') && !t.startsWith('√')) ? `(${t})` : t);
+  if (dot > 0) {
+    const t = cross / dot;
+    const e = exactSqrt(t * t);
+    return e ? `tan⁻¹${wrap(exactText(e))}` : null;
+  }
+  const cos = dot / (lu * lw);
+  const e = exactSqrt(cos * cos);
+  return e ? `cos⁻¹(−${exactText(e)})` : null;
 }

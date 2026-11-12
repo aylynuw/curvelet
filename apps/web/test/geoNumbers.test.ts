@@ -18,3 +18,20 @@ describe('geometry numbers', () => {
     expect(formatMeasure(angleMeasure(22.5), exact).text).toBe('22.5°');
   });
 });
+
+import { angleMeasureAt } from '../src/geo/labels';
+describe('angles as inverse trig', () => {
+  const trig = { ...exact, angleForm: 'trig' as const };
+  it('an acute angle on the grid is tan⁻¹ of a fraction', () => {
+    // at A(0,0) between B(2,0) and C(1,2): tan = 2
+    expect(formatMeasure(angleMeasureAt({ x: 2, y: 0 }, { x: 0, y: 0 }, { x: 1, y: 2 }), trig).text).toBe('tan⁻¹2');
+    expect(formatMeasure(angleMeasureAt({ x: 2, y: 0 }, { x: 0, y: 0 }, { x: 2, y: 1 }), trig).text).toBe('tan⁻¹(1/2)');
+  });
+  it('an obtuse angle is cos⁻¹ of a negative cosine', () => {
+    expect(formatMeasure(angleMeasureAt({ x: 1, y: 0 }, { x: 0, y: 0 }, { x: -1, y: 2 }), trig).text).toBe('cos⁻¹(−√5/5)');
+  });
+  it('whole degrees stay degrees; degree view stays decimal', () => {
+    expect(formatMeasure(angleMeasureAt({ x: 1, y: 0 }, { x: 0, y: 0 }, { x: 1, y: 1 }), trig).text).toBe('45°');
+    expect(formatMeasure(angleMeasureAt({ x: 2, y: 0 }, { x: 0, y: 0 }, { x: 1, y: 2 }), exact).text).toBe('63.43°');
+  });
+});

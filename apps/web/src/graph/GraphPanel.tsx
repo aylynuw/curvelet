@@ -32,6 +32,7 @@ import { exportGif, exportVideo, videoType, type Sweep } from './animate';
 import { MathText } from '../components/MathText';
 import { Menu, type MenuItem } from './Menu';
 import { fromLocal, nice, toLocal, type GraphPicture } from './pictures';
+import { crossingsWith, literalPoints, pointNames, setLiteral, shiftLiterals } from './handles';
 import { decodedImage, pickPicture, pictureFile, readPicture, type Picture } from '../pictures';
 import { GraphSettings } from './GraphSettings';
 import { fitRange } from './fit';
@@ -95,6 +96,10 @@ export function GraphPanel({
   picSel,
   onPicSel,
   placeRef,
+  sourceOf,
+  onEditLine,
+  onDeleteLine,
+  onAddPoint,
 }: {
   graphables: Graphable[];
   seriesOf: (id: string) => number;
@@ -134,6 +139,12 @@ export function GraphPanel({
   onPicSel: (id: string | null) => void;
   /** set to a function that places a picture in the middle of the view */
   placeRef: React.MutableRefObject<((pic: Picture) => void) | null>;
+  /** a line's text, to edit a shape by the numbers in it */
+  sourceOf: (id: string) => string | undefined;
+  onEditLine: (id: string, source: string) => void;
+  onDeleteLine: (id: string) => void;
+  /** marks a point (a crossing, a point of interest) as a new line */
+  onAddPoint: (x: number, y: number) => void;
 }) {
   const wrapRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -176,6 +187,24 @@ export function GraphPanel({
   };
 
   const selectedGraph = graphables.find((g) => g.id === selected && g.kind !== 'point') ?? null;
+  // the selected shape's handles: the pairs written in its line, and the named points it is built on
+  const shapeSource = selectedGraph?.kind === 'shape' ? (sourceOf(selectedGraph.id) ?? '') : '';
+  const shapeHandles = useMemo(() => {
+    if (!shapeSource) return { literals: [], named: [] as { name: string; x: number; y: number }[] };
+    const own = shapeSource.match(/^\s*(?:let\s+|const\s+)?([A-Za-z]\w*)\s*=/)?.[1];
+    const named = pointNames(shapeSource)
+      .filter((n) => n !== own)
+      .flatMap((n) => {
+        const g = graphables.find((q) => q.kind === 'point' && q.label === n && q.drag);
+        return g && g.kind === 'point' ? [{ name: n, x: g.x, y: g.y }] : [];
+      });
+    return { literals: literalPoints(shapeSource), named };
+  }, [shapeSource, graphables]);
+  /** a whole shape being moved: its line as it was, and its named points where they were */
+  const shapeDrag = useRef<{ id: string; start: [number, number]; src: string; named: { name: string; x: number; y: number }[]; moved: boolean } | null>(null);
+  const handleDrag = useRef<{ id: string; src: string; k: number } | { name: string } | null>(null);
+  /** where the selected curve or shape crosses the others, in plane coordinates */
+  const [crossings, setCrossings] = useState<{ x: number; y: number }[]>([]);
   const explicit = selectedGraph?.kind === 'curve' && selectedGraph.dir === 'y' ? selectedGraph : null;
   const pois = useMemo(
     () => (selectedGraph && size.width ? pointsOfInterest(graphables, viewport, selectedGraph.id) : []),
@@ -318,6 +347,8 @@ export function GraphPanel({
     for (let k = 0; k + 1 < nodes.length; k++) piece(nodes[k]!, nodes[k + 1]!);
     if (closed) piece(nodes[nodes.length - 1]!, nodes[0]!);
     onInsert(`bezier(${parts.join(', ')})`);
+    // back to selecting, so the new curve can be picked, moved or deleted
+    setPenMode(false);
   };
   const [box, setBox] = useState<{ x0: number; y0: number; x1: number; y1: number } | null>(null);
   const fitCurves = () => {
@@ -409,6 +440,29 @@ export function GraphPanel({
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [drawn, view, size, figure, themeVersion, seriesOf, selected, pois, trace, look, pictures, picsReady]);
+  // where the selection crosses the other curves and shapes (points of interest already show their own)
+  useEffect(() => {
+    const scene = sceneRef.current;
+    if (!scene || !selectedGraph || exam) return setCrossings([]);
+    const mine: number[] = [];
+    const others: number[] = [];
+    for (const c of scene.curves) {
+      const into = c.id.split(':')[0] === selectedGraph.id ? mine : others;
+      for (const l of c.lines) for (let k = 0; k + 3 < l.length; k += 2) into.push(l[k]!, l[k + 1]!, l[k + 2]!, l[k + 3]!);
+      for (let k = 0; k + 3 < c.segs.length; k += 4) into.push(c.segs[k]!, c.segs[k + 1]!, c.segs[k + 2]!, c.segs[k + 3]!);
+    }
+    const found = mine.length ? crossingsWith(mine, others) : [];
+    setCrossings(
+      found
+        .filter((q) => !pois.some((p) => Math.hypot(toPx(viewport, p.x) - q.x, toPy(viewport, p.y) - q.y) < 8))
+        .map((q) => {
+          const [x, y] = planeAt(viewport, q.x, q.y);
+          return { x, y };
+        }),
+    );
+    // the scene is read after the draw above
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [drawn, view, size, selected, pois]);
 
   // wheel zoom needs a non-passive listener to keep the page from scrolling
   useEffect(() => {
@@ -458,6 +512,15 @@ export function GraphPanel({
       setBox({ x0: p.x, y0: p.y, x1: p.x, y1: p.y });
       return;
     }
+    // a press on the selected shape picks the whole shape up
+    if (selectedGraph?.kind === 'shape' && !exam && e.button === 0 && pointers.current.size === 0 && sceneRef.current && (shapeHandles.literals.length || shapeHandles.named.length)) {
+      if (curveAt(sceneRef.current, p.x, p.y, e.pointerType === 'touch' ? 20 : 10) === selectedGraph.id) {
+        shapeDrag.current = { id: selectedGraph.id, start: planeAt(viewport, p.x, p.y) as [number, number], src: shapeSource, named: shapeHandles.named, moved: false };
+        pointers.current.set(e.pointerId, p);
+        pressedAt.current = { ...p, moved: false };
+        return;
+      }
+    }
     pointers.current.set(e.pointerId, p);
     pressedAt.current = pointers.current.size === 1 ? { ...p, moved: false } : null;
     // pressing on a point written as let A = (x, y) picks it up instead of panning
@@ -479,6 +542,21 @@ export function GraphPanel({
       drag.moved = true;
       const [wx, wy] = planeAt(viewport, p.x, p.y);
       setPen((ns) => ns.map((n, k) => (k === drag.k ? { ...n, out: { x: wx - n.x, y: wy - n.y } } : n)));
+      return;
+    }
+    const sd = shapeDrag.current;
+    if (sd) {
+      const press = pressedAt.current;
+      if (!sd.moved && press && Math.hypot(p.x - press.x, p.y - press.y) < CLICK_SLOP) return;
+      sd.moved = true;
+      if (press) press.moved = true;
+      // moved in whole grid steps (Shift for finer), so the numbers stay simple
+      const step = gridStep(viewport.scale).minor / (e.shiftKey ? 10 : 2);
+      const [x, y] = planeAt(viewport, p.x, p.y);
+      const [dx, dy] = [Math.round((x - sd.start[0]) / step) * step, Math.round((y - sd.start[1]) / step) * step];
+      const next = shiftLiterals(sd.src, dx, dy);
+      if (next !== sd.src || dx || dy) onEditLine(sd.id, next);
+      for (const n of sd.named) onMovePoint(n.name, Number((n.x + dx).toPrecision(12)), Number((n.y + dy).toPrecision(12)));
       return;
     }
     if (penMode && e.pointerType === 'mouse') setHover({ px: p.x, py: p.y });
@@ -513,6 +591,15 @@ export function GraphPanel({
     if (penDrag.current) {
       penDrag.current = null;
       return;
+    }
+    const sd = shapeDrag.current;
+    if (sd) {
+      shapeDrag.current = null;
+      if (sd.moved) {
+        pointers.current.delete(e.pointerId);
+        pressedAt.current = null;
+        return;
+      }
     }
     if (box) {
       setBox(null);
@@ -571,6 +658,10 @@ export function GraphPanel({
       e.preventDefault();
       setPictures((ps) => ps.filter((p) => p.id !== picSel));
       setPicSel(null);
+    } else if ((e.key === 'Delete' || e.key === 'Backspace') && selected && sourceOf(selected) !== undefined) {
+      e.preventDefault();
+      onDeleteLine(selected);
+      onSelect(null);
     } else if (e.key === 'Escape') {
       if (penMode) setPenMode(false);
       setPicSel(null);
@@ -626,6 +717,60 @@ export function GraphPanel({
       ))}
     </div>
   );
+
+  /** the selected shape's handles: drag one to move that point of it */
+  const onHandleMove = (e: PointerEvent<SVGElement>) => {
+    const h = handleDrag.current;
+    if (!h) return;
+    const r = canvasRef.current!.getBoundingClientRect();
+    const step = gridStep(viewport.scale).minor / (e.shiftKey ? 10 : 2);
+    const [x, y] = planeAt(viewport, e.clientX - r.left, e.clientY - r.top).map((c) => Number((Math.round(c / step) * step).toPrecision(12))) as [number, number];
+    if ('name' in h) onMovePoint(h.name, x, y);
+    else onEditLine(h.id, setLiteral(h.src, h.k, x, y));
+  };
+  const shapeOverlay = () => {
+    const { literals, named } = shapeHandles;
+    if (!selectedGraph || (!literals.length && !named.length)) return null;
+    const id = selectedGraph.id;
+    const bez = /^\s*bezier\s*\(/.test(shapeSource) && literals.length >= 4;
+    const X = (x: number) => toPx(viewport, x);
+    const Y = (y: number) => toPy(viewport, y);
+    const grab = (e: PointerEvent<SVGElement>, h: { id: string; src: string; k: number } | { name: string }) => {
+      if (e.button !== 0) return;
+      e.stopPropagation();
+      e.currentTarget.setPointerCapture(e.pointerId);
+      handleDrag.current = h;
+    };
+    const release = () => {
+      handleDrag.current = null;
+    };
+    return (
+      <svg className="ghandles" width={size.width} height={size.height} aria-hidden="true">
+        {bez &&
+          literals.map((l, k) => {
+            if (k % 3 === 0) return null;
+            const a = literals[k % 3 === 1 ? k - 1 : k + 1];
+            return a ? <line key={`arm${k}`} className="ghandles__arm" x1={X(a.x)} y1={Y(a.y)} x2={X(l.x)} y2={Y(l.y)} /> : null;
+          })}
+        {literals.map((l, k) => (
+          <circle
+            key={`l${k}`}
+            className={`ghandles__knob${bez && k % 3 !== 0 ? ' ghandles__knob--control' : ''}`}
+            cx={X(l.x)}
+            cy={Y(l.y)}
+            r={bez && k % 3 !== 0 ? 4 : 5.5}
+            onPointerDown={(e) => grab(e, { id, src: shapeSource, k })}
+            onPointerMove={onHandleMove}
+            onPointerUp={release}
+            onPointerCancel={release}
+          />
+        ))}
+        {named.map((n) => (
+          <circle key={n.name} className="ghandles__knob" cx={X(n.x)} cy={Y(n.y)} r={5.5} onPointerDown={(e) => grab(e, { name: n.name })} onPointerMove={onHandleMove} onPointerUp={release} onPointerCancel={release} />
+        ))}
+      </svg>
+    );
+  };
 
   /** the curve being drawn: its pieces, handles, and the next piece to the cursor */
   const penOverlay = () => {
@@ -738,6 +883,19 @@ export function GraphPanel({
             <span className="gpic__handle gpic__handle--rot" onPointerDown={(e) => onPicDown(e, 'rot')} onPointerMove={onPicMove} onPointerUp={onPicUp} />
           </div>
         )}
+        {!penMode && !exam && selectedGraph?.kind === 'shape' && shapeOverlay()}
+        {!penMode && !exam &&
+          crossings.map((q) => (
+            <button
+              key={`${q.x},${q.y}`}
+              type="button"
+              className="gcross"
+              style={{ left: toPx(viewport, q.x), top: toPy(viewport, q.y) }}
+              title={t.markCrossing(at({ x: q.x, y: q.y } as Poi))}
+              aria-label={t.markCrossing(at({ x: q.x, y: q.y } as Poi))}
+              onClick={() => onAddPoint(q.x, q.y)}
+            />
+          ))}
         {penMode && penOverlay()}
         {penMode && (
           <div className="graph__pen-hint" role="status">
@@ -903,6 +1061,12 @@ export function GraphPanel({
                             {p.kind === 'intersection' && <span className="poi__with"> {t.poiWith(lineNumber(p.ids[1]!))}</span>}
                           </span>
                           <span className="num poi__at">{at(p)}</span>
+                        </button>
+                        <button type="button" className="icon-btn poi__mark" aria-label={t.markPoint(at(p))} title={t.markPoint(at(p))} onClick={() => onAddPoint(p.x, p.y)}>
+                          <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
+                            <circle cx="8" cy="8" r="2.5" fill="currentColor" />
+                            <path d="M8 1.5v2.5M8 12v2.5M1.5 8h2.5M12 8h2.5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+                          </svg>
                         </button>
                       </li>
                     ))}

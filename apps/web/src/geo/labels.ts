@@ -4,7 +4,7 @@
  * parallel arrows, angle arcs and right-angle squares, a circle's radius or
  * diameter, point names. The canvas and every export draw the same list.
  */
-import { exactRational, exactSqrt, formatMeasure, mathText, scale, type Measure } from './exact';
+import { angleTrig, exactRational, exactSqrt, formatMeasure, mathText, scale, type Measure } from './exact';
 import { cornerIds, type GeoObject, type LabelPart, type Pt, type Shape } from './model';
 import { propsOf, type GeoProps, type LabelMode } from './props';
 
@@ -60,6 +60,12 @@ export function areaMeasure(value: number, pi = false): Measure {
 export function typedLength(l: number): Measure {
   return { value: l, exact: exactSqrt(l * l), kind: 'length' };
 }
+/** the angle a-v-c with its exact inverse-trig form when it has one (not for a reflex corner) */
+export function angleMeasureAt(a: Pt, v: Pt, c: Pt, reflex = false): Measure {
+  const deg = reflex ? 360 - angleAt(a, v, c) : angleAt(a, v, c);
+  const trig = reflex ? null : angleTrig(a, v, c);
+  return { ...angleMeasure(deg), ...(trig ? { trig } : {}) };
+}
 export function angleMeasure(deg: number): Measure {
   return { value: deg, exact: Math.abs(deg - Math.round(deg)) < 1e-6 ? { a: Math.round(deg), b: 1, c: 1 } : null, kind: 'angle' };
 }
@@ -98,7 +104,7 @@ export function measuresOf(o: GeoObject, s: Shape): Record<string, Measure> {
     };
   }
   if (s.type === 'ellipse') return { area: areaMeasure(Math.PI * s.rx * s.ry, true) };
-  if (s.type === 'angle') return { angle: angleMeasure(s.degrees) };
+  if (s.type === 'angle') return { angle: Math.abs(s.degrees - angleAt(s.a, s.v, s.c)) < 1e-9 ? angleMeasureAt(s.a, s.v, s.c) : angleMeasure(s.degrees) };
   void o;
   return {};
 }
@@ -210,7 +216,7 @@ export function decorate(objects: GeoObject[], shapes: Map<string, Shape>, defau
       }
     }
     if (mode === 'hidden' || (right && mode === 'value' && p.rightMark !== 'off')) return;
-    const label = mode === 'custom' ? { text: mathText(custom ?? ''), approx: false } : valueText(angleMeasure(deg), p);
+    const label = mode === 'custom' ? { text: mathText(custom ?? ''), approx: false } : valueText(deg === real ? angleMeasureAt(a, v, c, reflex) : angleMeasure(deg), p);
     if (label.text) text({ owner: o.id, key, at: add(v, mul(bis, r + p.fontSize * 0.9)), text: label.text, p, math: mode === 'custom', approx: label.approx, push: bis }, o.deco?.moved);
   };
 

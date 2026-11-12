@@ -1,7 +1,7 @@
 import { DEFAULT_SETTINGS, EMPTY_ENV, evaluate, parse } from '@math/engine';
 import { useEffect, useState, type ReactNode } from 'react';
 import { formatMeasure } from './exact';
-import { angleAt, angleMeasure, lengthMeasure, typedLength } from './labels';
+import { angleAt, angleMeasure, angleMeasureAt, lengthMeasure, typedLength } from './labels';
 import { cornerIds, type Deco, type GeoObject, type LabelPart, type Pt, type Shape } from './model';
 import { propsOf, type GeoProps } from './props';
 import type { GeoStrings } from './strings';
@@ -132,7 +132,7 @@ export function PropertiesPanel({
                 title={s.angleRow(abc)}
                 shown={cornerMode(k) !== 'hidden'}
                 onShown={(on) => setPart(one, 'corners', k, n, { label: on ? (part.text ? 'custom' : 'value') : 'hidden' })}
-                value={formatMeasure(angleMeasure(part.deg ?? angleAt(prev, v, next)), p)}
+                value={formatMeasure(part.deg !== undefined && Math.abs(part.deg - angleAt(prev, v, next)) > 1e-4 ? angleMeasure(part.deg) : angleMeasureAt(prev, v, next), p)}
                 angle
                 length={canEditAngle({ owner: one.id, corner: k }) ? { now: part.deg ?? angleAt(prev, v, next), set: (d) => onAngle({ owner: one.id, corner: k }, d) } : null}
                 locked={part.deg !== undefined}
@@ -206,7 +206,7 @@ export function PropertiesPanel({
           title={s.angleRow(`${name(one.a)}${name(one.vertex)}${name(one.c)}`)}
           shown={p.angleLabel !== 'hidden'}
           onShown={(v) => onProps({ angleLabel: v ? (one.deco?.text ? 'custom' : 'value') : 'hidden' })}
-          value={formatMeasure(angleMeasure(shape.degrees), p)}
+          value={formatMeasure(Math.abs(shape.degrees - angleAt(shape.a, shape.v, shape.c)) < 1e-9 ? angleMeasureAt(shape.a, shape.v, shape.c) : angleMeasure(shape.degrees), p)}
           angle
           length={canEditAngle({ owner: one.id, arm: true }) ? { now: shape.degrees, set: (d) => onAngle({ owner: one.id, arm: true }, d) } : null}
           label={p.angleLabel === 'custom' ? (one.deco?.text ?? '') : ''}
@@ -521,6 +521,19 @@ function Notation({ s, value, own, doc, onChange }: { s: GeoStrings; value: GeoP
         </select>
         {custom && <CommitInput className="input gp__unit" aria-label={s.customUnit} value={known ? '' : value.unit} onCommit={(t) => onChange({ unit: t.trim() })} />}
       </div>
+      {value.format !== 'decimal' && (
+        <div className="gp__line">
+          <span className="gp__mini">{s.angleForm}</span>
+          <div className="segmented gp__seg" role="group" aria-label={s.angleForm}>
+            <button type="button" aria-pressed={value.angleForm !== 'trig'} onClick={() => onChange({ angleForm: 'degree' })}>
+              {s.angleDegree}
+            </button>
+            <button type="button" aria-pressed={value.angleForm === 'trig'} title={s.angleTrigHint} onClick={() => onChange({ angleForm: 'trig' })}>
+              {s.angleTrig}
+            </button>
+          </div>
+        </div>
+      )}
     </Section>
   );
 }

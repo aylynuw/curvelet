@@ -1319,6 +1319,26 @@ export function App() {
             picSel={picSel}
             onPicSel={setPicSel}
             placeRef={placePicture}
+            sourceOf={(id) => linesRef.current.find((l) => l.id === id)?.source}
+            onEditLine={updateLine}
+            onDeleteLine={(id) => {
+              const index = linesRef.current.findIndex((l) => l.id === id);
+              if (index >= 0) deleteLine(index);
+            }}
+            onAddPoint={(x, y) => {
+              // the next free capital letter names it
+              const taken = new Set(ws.definitions().map((d) => d.name));
+              const name = [...'PQRSTUVWABCDEFGHJKLMNOXYZ'].find((c) => !taken.has(c)) ?? `P_${taken.size}`;
+              // a crossing of straight pieces is found exactly enough to write as a fraction (23/6)
+              const f = (v: number) => {
+                for (let d = 1; d <= 60; d++) {
+                  const n = Math.round(v * d);
+                  if (Math.abs(n / d - v) < 1e-7 * Math.max(1, Math.abs(v))) return d === 1 ? String(n === 0 ? 0 : n) : `${n}/${d}`;
+                }
+                return String(Number(v.toFixed(4)));
+              };
+              insertLines([`${name} = (${f(x)}, ${f(y)})`], name);
+            }}
             graphables={graphables}
             seriesOf={seriesOf}
             look={lookOf}
