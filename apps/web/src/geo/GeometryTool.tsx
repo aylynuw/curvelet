@@ -5,11 +5,12 @@ import { canvasToPdf, canvasToPng, copyFigure, download, figureBounds, figureSvg
 import { renderFigure } from './figure';
 import { decorate } from './labels';
 import { cloneObjects, cornerIds, crossings, draggable, freeRoots, measure, nextName, refs, resolve, toLines, withAncestors, without, type Deco, type GeoObject, type Pt, type Shape } from './model';
-import { PropertiesPanel, type LengthTarget } from './PropertiesPanel';
+import { PropertiesPanel, type AngleTarget, type LengthTarget } from './PropertiesPanel';
 import { BASE_PROPS, type GeoProps } from './props';
 
 type QuickAction = 'lengths' | 'angles' | 'hide' | 'reset';
 import { recognize } from './sketch';
+import { solvePolygon, turnArm, type Target } from './solve';
 import type { GeoStrings, GeoTool } from './strings';
 
 interface View {
@@ -75,7 +76,15 @@ const GROUP_TOOLS: Record<Group, GeoTool[]> = {
   construct: ['midpoint', 'perpendicular', 'parallel', 'bisector', 'intersection', 'compass', 'reflect', 'rotate'],
 };
 /** one-letter shortcuts, as in drawing apps */
-const KEYS: Record<string, GeoTool> = { v: 'select', p: 'point', l: 'segment', r: 'rect', o: 'circle', e: 'ellipse', a: 'angle' };
+const KEYS: Record<string, GeoTool> = {
+  v: 'select', p: 'point', a: 'angle',
+  // lines
+  l: 'segment', i: 'line', y: 'ray',
+  // shapes
+  r: 'rect', t: 'triangle', n: 'regular', g: 'polygon', o: 'circle', e: 'ellipse', b: 'pen',
+  // constructions
+  m: 'midpoint', u: 'perpendicular', j: 'parallel', w: 'bisector', x: 'intersection', c: 'compass', f: 'reflect', q: 'rotate',
+};
 const KEY_OF = Object.fromEntries(Object.entries(KEYS).map(([k, t]) => [t, k.toUpperCase()])) as Partial<Record<GeoTool, string>>;
 const GREEK = 'αβγδεζηθ';
 const POINT_KINDS = new Set(['point', 'midpoint', 'intersection', 'reflect', 'rotate', 'vertex']);
@@ -686,8 +695,8 @@ export function GeometryTool({ s, onSendToGraph }: { s: GeoStrings; onSendToGrap
   };
 
   // ---- keys: shortcuts like a drawing app (Cmd on Mac, Ctrl elsewhere)
-  const live = useRef({ step, deleteSel, duplicate, nudge, objects, selSet, gridStep, op, setOp, picks, boxStart, chooseTool: ((t: GeoTool) => void t) as (t: GeoTool) => void });
-  live.current = { step, deleteSel, duplicate, nudge, objects, selSet, gridStep, op, setOp, picks, boxStart, chooseTool: (t: GeoTool) => chooseToolRef.current(t) };
+  const live = useRef({ step, deleteSel, duplicate, nudge, objects, selSet, gridStep, op, setOp, picks, boxStart, chooseTool: ((t: GeoTool) => void t) as (t: GeoTool) => void, showKeys: () => {} });
+  live.current = { step, deleteSel, duplicate, nudge, objects, selSet, gridStep, op, setOp, picks, boxStart, chooseTool: (t: GeoTool) => chooseToolRef.current(t), showKeys: () => setOpenMenu((m) => (m?.id === 'keys' ? null : { id: 'keys', x: Math.max(8, window.innerWidth - 320), y: 110 })) };
   const chooseToolRef = useRef<(t: GeoTool) => void>(() => {});
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -700,6 +709,11 @@ export function GeometryTool({ s, onSendToGraph }: { s: GeoStrings; onSendToGrap
       const L = live.current;
       const mod = e.metaKey || e.ctrlKey;
       const k = e.key.toLowerCase();
+      if (e.key === '?') {
+        e.preventDefault();
+        L.showKeys();
+        return;
+      }
       if (!mod && !e.altKey && KEYS[k] && !e.repeat) {
         L.chooseTool(KEYS[k]!);
         return;
@@ -1013,6 +1027,20 @@ export function GeometryTool({ s, onSendToGraph }: { s: GeoStrings; onSendToGrap
     if (o.kind === 'move' || o.kind === 'resize' || o.kind === 'turn' || o.kind === 'label') {
       if (!o.moved) setPast((p) => p.slice(0, -1));
       else setFuture([]);
+      // points dragged by hand, or a shape stretched: its typed values no longer hold, so they let go
+      // (moving or turning a whole shape keeps every length and angle, so those stay)
+      if (o.moved && (o.kind === 'move' || o.kind === 'resize')) {
+        const moved = o.orig;
+        setDoc((d) => ({
+          ...d,
+          objects: d.objects.map((x) => {
+            if (x.kind !== 'polygon' || !x.pts.some((id) => moved.has(id))) return x;
+            if (o.kind === 'move' && x.pts.every((id) => moved.has(id))) return x;
+            const strip = (list?: Deco['sides']) => list?.map(({ len: _l, deg: _d, at: _a, ...rest }) => rest);
+            return { ...x, deco: { ...x.deco, sides: strip(x.deco?.sides), corners: strip(x.deco?.corners) } };
+          }),
+        }));
+      }
       return;
     }
     if (o.kind === 'angle') {
@@ -1175,11 +1203,94 @@ export function GeometryTool({ s, onSendToGraph }: { s: GeoStrings; onSendToGrap
   };
   const isFree = (id: string) => byId.get(id)?.kind === 'point';
   const canEditLength = (t: LengthTarget) => {
+    const o = byId.get(t.owner);
+    if (o?.kind === 'polygon') return o.pts.some(isFree);
     const ends = endsOf(t);
     return Boolean(ends && (isFree(ends[1]) || ('side' in t && isFree(ends[0]))));
   };
-  /** a side typed to a length: its far end (or its near one) slides along the side */
+
+  /**
+   * A polygon redrawn to the values typed for it, after one more is typed (or let go).
+   * Too many values for the shape to hold: the oldest give way.
+   */
+  const relock = (ownerId: string, change: { which: 'sides' | 'corners'; k: number; value: number | undefined }) => {
+    const o = byId.get(ownerId);
+    const sh = shapes.get(ownerId);
+    if (o?.kind !== 'polygon' || sh?.type !== 'polygon') return;
+    const n = o.pts.length;
+    const sides = Array.from({ length: n }, (_, k) => ({ ...(o.deco?.sides?.[k] ?? {}) }));
+    const corners = Array.from({ length: n }, (_, k) => ({ ...(o.deco?.corners?.[k] ?? {}) }));
+    const list = change.which === 'sides' ? sides : corners;
+    const key = change.which === 'sides' ? 'len' : 'deg';
+    const part = list[change.k]!;
+    if (change.value === undefined) {
+      delete part[key];
+      delete part.at;
+    } else {
+      part[key] = change.value;
+      part.at = Date.now();
+      // a value shows once it is typed
+      if (part.label === 'hidden' || part.label === undefined) part.label = part.text ? 'custom' : 'value';
+    }
+    const locks = () =>
+      [
+        ...sides.map((p, k) => (p.len !== undefined ? { list: sides, k, key: 'len' as const, at: p.at ?? 0 } : null)),
+        ...corners.map((p, k) => (p.deg !== undefined ? { list: corners, k, key: 'deg' as const, at: p.at ?? 0 } : null)),
+      ]
+        .filter((x): x is NonNullable<typeof x> => Boolean(x))
+        .filter((x) => !(x.list === list && x.k === change.k))
+        .sort((a, b) => a.at - b.at);
+    const free = (part: { len?: number; deg?: number; at?: number }, k: 'len' | 'deg') => {
+      delete part[k];
+      delete part.at;
+    };
+    const count = () => sides.filter((p) => p.len !== undefined).length + corners.filter((p) => p.deg !== undefined).length;
+    while (count() > 2 * n - 3 && locks().length) {
+      const old = locks()[0]!;
+      free(old.list[old.k]!, old.key);
+    }
+    // all the angles can't be chosen: they add up to (n − 2)·180°
+    if (corners.every((p) => p.deg !== undefined)) {
+      const old = locks().find((x) => x.key === 'deg');
+      if (old) free(old.list[old.k]!, 'deg');
+    }
+    const targets: Target[] = [
+      ...sides.flatMap((p, k) => (p.len !== undefined ? [{ kind: 'len' as const, side: k, value: p.len }] : [])),
+      ...corners.flatMap((p, k) => (p.deg !== undefined ? [{ kind: 'ang' as const, corner: k, value: p.deg }] : [])),
+    ];
+    const { pts, miss } = solvePolygon(sh.pts, o.pts.map(isFree), targets);
+    if (miss > 1e-6) setNotice(s.cannotFit);
+    const at = new Map(o.pts.map((id, k) => [id, pts[k]!]));
+    commit(
+      objects.map((x) => {
+        if (x.id === ownerId) return { ...x, deco: { ...x.deco, sides, corners } };
+        const p = at.get(x.id);
+        return p && x.kind === 'point' ? { ...x, x: p.x, y: p.y } : x;
+      }),
+    );
+  };
+  const canEditAngle = (t: AngleTarget) => {
+    const o = byId.get(t.owner);
+    if (o?.kind === 'polygon') return o.pts.some(isFree);
+    if (o?.kind === 'angle') return isFree(o.c) || isFree(o.a);
+    return false;
+  };
+  /** an angle typed: a polygon is redrawn; an angle's free arm swings to it */
+  const onAngle = (t: AngleTarget, deg: number) => {
+    const o = byId.get(t.owner);
+    if (o?.kind === 'polygon' && 'corner' in t) return relock(o.id, { which: 'corners', k: t.corner, value: deg });
+    if (o?.kind !== 'angle') return;
+    const [a, v, c] = [o.a, o.vertex, o.c].map((id) => shapes.get(id)) as (Shape | undefined)[];
+    if (a?.type !== 'point' || v?.type !== 'point' || c?.type !== 'point') return;
+    const [move, to] = isFree(o.c) ? [o.c, turnArm(a.at, v.at, c.at, deg)] : [o.a, turnArm(c.at, v.at, a.at, deg)];
+    commit(objects.map((x) => (x.id === move && x.kind === 'point' ? { ...x, x: to.x, y: to.y } : x)));
+  };
+  const onUnlock = (owner: string, which: 'sides' | 'corners', k: number) => relock(owner, { which, k, value: undefined });
+
+  /** a side typed to a length: a polygon is redrawn; a segment's far end (or near one) slides along it */
   const onLength = (t: LengthTarget, length: number) => {
+    const owner = byId.get(t.owner);
+    if (owner?.kind === 'polygon' && 'side' in t) return relock(owner.id, { which: 'sides', k: t.side, value: length });
     const ends = endsOf(t);
     if (!ends) return;
     const [pa, pb] = ends.map((id) => shapes.get(id)) as [Shape | undefined, Shape | undefined];
@@ -1488,7 +1599,32 @@ export function GeometryTool({ s, onSendToGraph }: { s: GeoStrings; onSendToGrap
               >
                 {s.fit}
               </button>,
+              <button key="keys" type="button" className="menu__item geo__pop-item" onClick={() => setOpenMenu((m) => m && { ...m, id: 'keys' })}>
+                <span>{s.shortcuts}</span>
+                <kbd className="geo__kbd">?</kbd>
+              </button>,
             ])}
+            {popover(
+              'keys',
+              <dl className="geo__keys">
+                {Object.entries(KEYS).map(([key, t]) => (
+                  <div key={key} className="geo__keys-row">
+                    <dt>{s.tools[t]}</dt>
+                    <dd>
+                      <kbd className="geo__kbd">{key.toUpperCase()}</kbd>
+                    </dd>
+                  </div>
+                ))}
+                {s.editKeys.map(([what, keys]) => (
+                  <div key={what} className="geo__keys-row">
+                    <dt>{what}</dt>
+                    <dd>
+                      <kbd className="geo__kbd">{keys}</kbd>
+                    </dd>
+                  </div>
+                ))}
+              </dl>,
+            )}
           </span>
           <span className="geo__split">
             <button type="button" className="btn btn--small" aria-expanded={openMenu?.id === 'export'} onClick={(e) => openAt('export', e.currentTarget)}>
@@ -1618,6 +1754,9 @@ export function GeometryTool({ s, onSendToGraph }: { s: GeoStrings; onSendToGrap
               onRename={(id, name) => patchObjects(new Set([id]), (o) => ({ ...o, name }))}
               onLength={onLength}
               canEditLength={canEditLength}
+              onAngle={onAngle}
+              canEditAngle={canEditAngle}
+              onUnlock={onUnlock}
             />
           ) : objects.length === 0 ? (
             <p className="geo__empty">{s.empty}</p>

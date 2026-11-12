@@ -1,13 +1,15 @@
 import { DEFAULT_SETTINGS, EMPTY_ENV, evaluate, parse } from '@math/engine';
 import { useEffect, useState, type ReactNode } from 'react';
 import { formatMeasure } from './exact';
-import { angleAt, angleMeasure, lengthMeasure } from './labels';
+import { angleAt, angleMeasure, lengthMeasure, typedLength } from './labels';
 import { cornerIds, type Deco, type GeoObject, type LabelPart, type Pt, type Shape } from './model';
 import { propsOf, type GeoProps } from './props';
 import type { GeoStrings } from './strings';
 
 /** which length a row edits */
 export type LengthTarget = { owner: string; side: number } | { owner: string; radius: true };
+/** which angle a row edits: a polygon's corner, or an angle object */
+export type AngleTarget = { owner: string; corner: number } | { owner: string; arm: true };
 
 /**
  * The Properties tab, kept to what a figure for a worksheet needs: each side
@@ -27,6 +29,9 @@ export function PropertiesPanel({
   onRename,
   onLength,
   canEditLength,
+  onAngle,
+  canEditAngle,
+  onUnlock,
 }: {
   s: GeoStrings;
   selected: GeoObject[];
@@ -41,6 +46,11 @@ export function PropertiesPanel({
   onRename: (id: string, name: string) => void;
   onLength: (t: LengthTarget, length: number) => void;
   canEditLength: (t: LengthTarget) => boolean;
+  /** an angle typed in degrees: the shape is redrawn to it */
+  onAngle: (t: AngleTarget, deg: number) => void;
+  canEditAngle: (t: AngleTarget) => boolean;
+  /** let a typed value go */
+  onUnlock: (owner: string, which: 'sides' | 'corners', k: number) => void;
 }) {
   const byId = new Map(objects.map((o) => [o.id, o]));
   const name = (id: string) => byId.get(id)?.name ?? '?';
@@ -91,7 +101,9 @@ export function PropertiesPanel({
                 title={s.sideRow(ab)}
                 shown={sideMode(k) !== 'hidden'}
                 onShown={(v) => setPart(one, 'sides', k, n, { label: v ? (part.text ? 'custom' : 'value') : 'hidden' })}
-                value={fmt(lengthMeasure(a, b))}
+                value={fmt(part.len !== undefined ? typedLength(part.len) : lengthMeasure(a, b))}
+                locked={part.len !== undefined}
+                onUnlock={() => onUnlock(one.id, 'sides', k)}
                 length={canEditLength(target) ? { now: Math.hypot(b.x - a.x, b.y - a.y), set: (l) => onLength(target, l) } : null}
                 label={part.label === 'custom' ? (part.text ?? '') : ''}
                 onLabel={(t) => setPart(one, 'sides', k, n, t ? { label: 'custom', text: t } : { label: sideMode(k) === 'hidden' ? 'hidden' : 'value', text: undefined })}
@@ -113,7 +125,11 @@ export function PropertiesPanel({
                 title={s.angleRow(abc)}
                 shown={cornerMode(k) !== 'hidden'}
                 onShown={(on) => setPart(one, 'corners', k, n, { label: on ? (part.text ? 'custom' : 'value') : 'hidden' })}
-                value={formatMeasure(angleMeasure(angleAt(prev, v, next)), p)}
+                value={formatMeasure(angleMeasure(part.deg ?? angleAt(prev, v, next)), p)}
+                angle
+                length={canEditAngle({ owner: one.id, corner: k }) ? { now: part.deg ?? angleAt(prev, v, next), set: (d) => onAngle({ owner: one.id, corner: k }, d) } : null}
+                locked={part.deg !== undefined}
+                onUnlock={() => onUnlock(one.id, 'corners', k)}
                 label={part.label === 'custom' ? (part.text ?? '') : ''}
                 onLabel={(t) => setPart(one, 'corners', k, n, t ? { label: 'custom', text: t } : { label: cornerMode(k) === 'hidden' ? 'hidden' : 'value', text: undefined })}
               />
@@ -184,6 +200,8 @@ export function PropertiesPanel({
           shown={p.angleLabel !== 'hidden'}
           onShown={(v) => onProps({ angleLabel: v ? (one.deco?.text ? 'custom' : 'value') : 'hidden' })}
           value={formatMeasure(angleMeasure(shape.degrees), p)}
+          angle
+          length={canEditAngle({ owner: one.id, arm: true }) ? { now: shape.degrees, set: (d) => onAngle({ owner: one.id, arm: true }, d) } : null}
           label={p.angleLabel === 'custom' ? (one.deco?.text ?? '') : ''}
           onLabel={(t) => {
             onDeco(one.id, (d) => ({ ...d, text: t || undefined }));
@@ -285,8 +303,14 @@ function Row({
   onLabel,
   ticks,
   onTicks,
+  angle,
+  locked,
+  onUnlock,
 }: {
   s: GeoStrings;
+  angle?: boolean;
+  locked?: boolean;
+  onUnlock?: () => void;
   title: string;
   shown: boolean;
   onShown: (v: boolean) => void;
@@ -314,16 +338,27 @@ function Row({
           )}
         </svg>
       </button>
-      <span className="gp__item-name">{title}</span>
+      <span className="gp__item-name">
+        <span className="gp__item-title">{title}</span>
+        {locked && (
+          <button type="button" className="gp__lock" aria-label={s.lockedValue(title)} title={s.lockedValue(title)} onClick={onUnlock}>
+            <svg viewBox="0 0 12 12" width="11" height="11" aria-hidden="true">
+              <rect x="2.5" y="5.2" width="7" height="5" rx="1" fill="currentColor" />
+              <path d="M4 5.2V4a2 2 0 014 0v1.2" stroke="currentColor" strokeWidth="1.2" fill="none" />
+            </svg>
+          </button>
+        )}
+      </span>
       {length ? (
         <CommitInput
           className="input gp__value"
-          aria-label={`${title} ${s.lengthField}`}
+          aria-label={`${title} ${angle ? s.angleField : s.lengthField}`}
           title={value.approx ? s.approxNote : undefined}
           value={value.text}
           onCommit={(t) => {
-            const l = readLength(t);
-            if (l && Math.abs(l - length.now) > 1e-12) length.set(l);
+            const l = readLength(angle ? t.replace(/°/g, '') : t);
+            if (!l || (angle && l >= 360) || (Math.abs(l - length.now) < 1e-12 && !angle)) return;
+            length.set(l);
           }}
         />
       ) : (

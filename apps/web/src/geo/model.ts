@@ -13,6 +13,12 @@ export interface LabelPart {
   ticks?: number;
   arrows?: number;
   arcs?: number;
+  /** a length typed for this side, held when the shape is redrawn */
+  len?: number;
+  /** an angle typed for this corner, in degrees */
+  deg?: number;
+  /** when the value was typed: with too many, the oldest gives way */
+  at?: number;
 }
 export interface Deco {
   /** custom text for the object's main label (a segment's length, a circle's measure, an angle) */

@@ -677,6 +677,9 @@ textarea.input { resize: vertical; line-height: 1.5; }
 .geo__pop-item { display: flex; align-items: center; justify-content: space-between; gap: var(--space-sm); text-align: left; }
 .geo__pop-item[aria-checked="true"] { background: var(--color-accent-soft); }
 .geo__pop-check { display: flex; align-items: center; gap: var(--space-xs); min-height: 36px; padding: 0 var(--space-xs); font-size: var(--text-sm); }
+.geo__keys { display: grid; gap: var(--space-3xs); margin: 0; padding: var(--space-xs); min-width: 16rem; max-height: 70vh; overflow-y: auto; }
+.geo__keys-row { display: flex; justify-content: space-between; gap: var(--space-sm); font-size: var(--text-sm); }
+.geo__keys-row dd { margin: 0; }
 .geo__kbd { font-family: var(--font-body); font-size: var(--text-xs); color: var(--color-muted); }
 .geo__guides line { stroke: var(--color-accent); stroke-width: 1; stroke-dasharray: 3 3; pointer-events: none; }
 .geo__side-pick { stroke: var(--color-accent); stroke-width: 5; stroke-linecap: round; opacity: 0.55; pointer-events: none; }
@@ -689,7 +692,11 @@ textarea.input { resize: vertical; line-height: 1.5; }
 .gp__eye:focus-visible, .gp__ticks:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 1px; }
 .gp__ticks { font-family: var(--font-math); font-size: var(--text-sm); letter-spacing: -0.05em; }
 .gp__ticks--empty { visibility: hidden; }
-.gp__item-name { min-width: 0; font-family: var(--font-math); font-size: var(--text-sm); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.gp__item-name { display: flex; align-items: center; gap: var(--space-3xs); min-width: 0; font-family: var(--font-math); font-size: var(--text-sm); }
+.gp__item-title { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.gp__lock { flex: none; display: inline-grid; place-items: center; width: 22px; height: 22px; padding: 0; border: 0; border-radius: var(--radius-sm); background: var(--color-accent-soft); color: var(--color-accent); }
+.gp__lock:hover { background: var(--color-paper-3); }
+.gp__lock:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 1px; }
 .gp__value { min-width: 0; min-height: 28px; padding: 0 var(--space-2xs); font-family: var(--font-math); font-size: var(--text-sm); font-variant-numeric: tabular-nums; }
 .gp__value--fixed { display: flex; align-items: center; }
 .gp__tag { min-width: 0; min-height: 28px; padding: 0 var(--space-2xs); font-family: var(--font-math); font-size: var(--text-sm); }

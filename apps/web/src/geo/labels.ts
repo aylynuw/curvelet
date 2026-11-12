@@ -56,6 +56,10 @@ export function areaMeasure(value: number, pi = false): Measure {
   const coef = pi ? value / Math.PI : value;
   return { value, exact: exactRational(coef) ?? (coef > 0 ? exactSqrt(coef * coef) : null), pi, kind: 'area' };
 }
+/** a length as it was typed: exact when its square is a fraction (5, 2√3) */
+export function typedLength(l: number): Measure {
+  return { value: l, exact: exactSqrt(l * l), kind: 'length' };
+}
 export function angleMeasure(deg: number): Measure {
   return { value: deg, exact: Math.abs(deg - Math.round(deg)) < 1e-7 ? { a: Math.round(deg), b: 1, c: 1 } : null, kind: 'angle' };
 }
@@ -140,7 +144,7 @@ export function decorate(objects: GeoObject[], shapes: Map<string, Shape>, defau
   const valueText = (m: Measure, p: GeoProps) => formatMeasure(m, p);
 
   /** ticks, arrows and the length label of one side a→b; `out` points away from the shape */
-  const side = (o: GeoObject, key: string, a: Pt, b: Pt, outward: Pt, mode: LabelMode, custom: string | undefined, ticks: number, arrows: number, p: GeoProps) => {
+  const side = (o: GeoObject, key: string, a: Pt, b: Pt, outward: Pt, mode: LabelMode, custom: string | undefined, ticks: number, arrows: number, p: GeoProps, locked?: number) => {
     const u = unit(sub(b, a));
     const m = mid(a, b);
     for (let j = 0; j < ticks; j++) {
@@ -152,7 +156,7 @@ export function decorate(objects: GeoObject[], shapes: Map<string, Shape>, defau
       out.lines.push({ owner: o.id, pts: [add(sub(c, mul(u, 0.16)), mul(outward, 0.12)), c, add(sub(c, mul(u, 0.16)), mul(outward, -0.12))] });
     }
     if (mode === 'hidden') return;
-    const label = mode === 'custom' ? { text: mathText(custom ?? ''), approx: false } : valueText(lengthMeasure(a, b), p);
+    const label = mode === 'custom' ? { text: mathText(custom ?? ''), approx: false } : valueText(locked !== undefined ? typedLength(locked) : lengthMeasure(a, b), p);
     if (!label.text) return;
     if (p.sideStyle === 'dimension') {
       const off = mul(outward, p.dimOffset);
@@ -170,8 +174,8 @@ export function decorate(objects: GeoObject[], shapes: Map<string, Shape>, defau
   };
 
   /** an angle at v from the ray to a round to the ray to c (the smaller turn), with its label */
-  const corner = (o: GeoObject, key: string, a: Pt, v: Pt, c: Pt, mode: LabelMode, custom: string | undefined, arcs: number, p: GeoProps, reflex = false) => {
-    const deg = reflex ? 360 - angleAt(a, v, c) : angleAt(a, v, c);
+  const corner = (o: GeoObject, key: string, a: Pt, v: Pt, c: Pt, mode: LabelMode, custom: string | undefined, arcs: number, p: GeoProps, reflex = false, locked?: number) => {
+    const deg = locked ?? (reflex ? 360 - angleAt(a, v, c) : angleAt(a, v, c));
     const right = Math.abs(deg - 90) < 1e-6;
     const showMark = mode !== 'hidden' || p.rightMark === 'always';
     const [u1, u2] = [unit(sub(a, v)), unit(sub(c, v))];
@@ -246,7 +250,7 @@ export function decorate(objects: GeoObject[], shapes: Map<string, Shape>, defau
         const outward = ccw ? { x: d.y, y: -d.x } : { x: -d.y, y: d.x };
         const part = sideOf(k);
         const ticks = part.ticks ?? o.props?.ticks ?? autoTick.get(`${o.id}:${k}`) ?? p.ticks;
-        side(o, `${o.id}:side${k}`, a, b, outward, part.label ?? p.sideLabel, part.text, ticks, part.arrows ?? p.arrows, p);
+        side(o, `${o.id}:side${k}`, a, b, outward, part.label ?? p.sideLabel, part.text, ticks, part.arrows ?? p.arrows, p, part.len);
       });
       s.pts.forEach((v, k) => {
         const part = cornerOf(k);
@@ -254,7 +258,7 @@ export function decorate(objects: GeoObject[], shapes: Map<string, Shape>, defau
         // a reflex corner of a concave polygon turns the other way
         const cross = (v.x - prev.x) * (next.y - v.y) - (v.y - prev.y) * (next.x - v.x);
         const reflex = ccw ? cross < 0 : cross > 0;
-        corner(o, `${o.id}:corner${k}`, prev, v, next, part.label ?? p.cornerLabel, part.text, part.arcs ?? p.angleArcs, p, reflex);
+        corner(o, `${o.id}:corner${k}`, prev, v, next, part.label ?? p.cornerLabel, part.text, part.arcs ?? p.angleArcs, p, reflex, part.deg);
       });
       if (p.areaLabel !== 'hidden') {
         const label = p.areaLabel === 'custom' ? { text: mathText(o.deco?.text ?? ''), approx: false } : valueText(areaMeasure(Math.abs(polygonArea(s.pts))), p);
