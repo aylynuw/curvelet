@@ -8,12 +8,14 @@ import { createRoot } from 'react-dom/client';
 import { App } from './App';
 import { loadMathLive } from './math/mathlive';
 import { registerServiceWorker } from './pwa';
+import { installIndicators } from './ui/indicator';
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <App />
   </StrictMode>,
 );
+installIndicators();
 
 // the opening screen: it stays until its animation has played (about 0.9 s from
 // the page's start), then fades away over the app's first paint
