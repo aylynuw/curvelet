@@ -22,8 +22,18 @@ export interface TapeEntry {
   exact?: string;
   /** a formula (x = ±√2, a derivative), set as math rather than as a number */
   math?: boolean;
+  /** a definition (let f(x) = …, a = 2): kept, so later lines can use it */
+  def?: string;
+  /** words, not a number ("function of x") */
+  note?: boolean;
 }
 type Format = 'exact' | 'decimal';
+
+/** the name a line defines: let f(x) = …, const g = …, a = 2 (not ans) */
+function defName(source: string): string | null {
+  const m = /^\s*(?:let\s+|const\s+)?([\p{L}][\p{L}\p{N}_]*)\s*(?:\([^)]*\))?\s*=(?!=)/u.exec(source);
+  return m && m[1] !== 'ans' && m[1] !== 'y' && m[1] !== 'x' ? m[1]! : null;
+}
 
 const TAPE_KEY = 'calculator.tape.v1';
 const loadTape = (): TapeEntry[] => {
@@ -43,7 +53,7 @@ const store = (key: string, value: unknown) => {
 };
 
 /** what a result shows, in the chosen format; null when it isn't an answer */
-function answer(r: Result | undefined, t: Strings): { text: string; exact?: string; math?: boolean } | null {
+function answer(r: Result | undefined, t: Strings): { text: string; exact?: string; math?: boolean; note?: boolean } | null {
   if (!r) return null;
   if (r.status === 'value') {
     if (r.value.kind === 'num' && r.value.z.im === 0) {
@@ -53,6 +63,7 @@ function answer(r: Result | undefined, t: Strings): { text: string; exact?: stri
     return { text: r.text, exact: r.exact };
   }
   if (r.status === 'symbolic' || r.status === 'solved') return { text: r.text, math: true };
+  if (r.status === 'function') return { text: t.functionOf(r.params.join(', ')), note: true };
   if (r.status === 'relation') return { text: r.holds ? t.yes : t.no };
   return null;
 }
@@ -100,15 +111,24 @@ export function CalculatorTool({
 
   const last = tape[tape.length - 1];
   const ws = useMemo(() => new Workspace(settings, resolver), [settings, resolver]);
+  const defIds = useRef(new Set<string>());
   // ans is the last answer, exact when it can be
   ws.set('ans', last ? `ans = ${last.exact ? `(${last.exact})` : last.text}` : '');
+  // definitions on the tape stay, like lines in the list: the latest one for each name
+  const curName = defName(input);
+  const defs = new Map<string, TapeEntry>();
+  for (const e of tape) if (e.def && e.def !== curName) defs.set(e.def, e);
+  const keep = new Set([...defs.values()].map((e) => `def:${e.id}`));
+  for (const id of defIds.current) if (!keep.has(id)) ws.remove(id);
+  for (const e of defs.values()) if (ws.source(`def:${e.id}`) !== e.source) ws.set(`def:${e.id}`, e.source);
+  defIds.current = keep;
   ws.set('cur', input);
   const result = input.trim() ? ws.result('cur') : undefined;
   const live = answer(result, t);
 
   const commit = () => {
     if (!live || !input.trim()) return;
-    setTape((tp) => [...tp, { id: newId(), source: input, text: live.text, ...(live.exact ? { exact: live.exact } : {}), ...(live.math ? { math: true } : {}) }]);
+    setTape((tp) => [...tp, { id: newId(), source: input, text: live.text, ...(live.exact ? { exact: live.exact } : {}), ...(live.math ? { math: true } : {}), ...(live.note ? { note: true } : {}), ...(curName && (result?.status === 'function' || result?.status === 'value') ? { def: curName } : {}) }]);
     setInput('');
   };
 
@@ -150,7 +170,7 @@ export function CalculatorTool({
                     <MathText text={e.source} />
                   </span>
                   <span className="calc__ans">
-                    {format === 'exact' && e.exact ? <MathText text={e.exact} block /> : e.math ? <MathText text={e.text} block /> : <NumberText text={e.text} />}
+                    {e.note ? <span className="calc__note">{e.text}</span> : format === 'exact' && e.exact ? <MathText text={e.exact} block /> : e.math ? <MathText text={e.text} block /> : <NumberText text={e.text} />}
                   </span>
                 </button>
               </li>
@@ -182,7 +202,7 @@ export function CalculatorTool({
           ) : display !== null ? (
             <span className="calc__big">
               {format === 'decimal' && live?.exact && '≈ '}
-              {(format === 'exact' && live?.exact) || live?.math ? <MathText text={display} block /> : <NumberText text={display} />}
+              {live?.note ? <span className="calc__note">{display}</span> : (format === 'exact' && live?.exact) || live?.math ? <MathText text={display} block /> : <NumberText text={display} />}
             </span>
           ) : last && !input.trim() ? (
             <span className="calc__big calc__big--quiet">
