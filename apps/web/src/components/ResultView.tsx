@@ -184,8 +184,8 @@ function ResultViewInner({
       return (
         <span className="result__stack">
           <span className="result__value result__formula">
-            <MathText text={result.text} />
-            {result.constant && <span className="result__muted"> {t.plusC}</span>}
+            {/* an indefinite integral carries its constant, set as part of the answer */}
+            <MathText text={result.constant ? `${result.text} + C` : result.text} />
           </span>
           {switchTo && (
             <button type="button" className="btn btn--small" onClick={() => onSwitch(switchTo)}>

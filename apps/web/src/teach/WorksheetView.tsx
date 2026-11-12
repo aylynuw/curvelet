@@ -1,4 +1,6 @@
 import type { EvalSettings, SymbolicResolver } from '@math/engine';
+import { latexToText } from '../math/latex';
+import { prettyGuide } from '../graph/guideText';
 import { levelTopics, type Level, type Topic } from '@math/steps';
 import { useEffect, useLayoutEffect, useReducer, useRef, useState, type ReactNode } from 'react';
 import type { Lang } from '../i18n';
@@ -254,9 +256,21 @@ export function WorksheetView({
   );
 }
 
-/** a one-line summary of a problem's text: raw LaTeX shortened to …, $ marks dropped */
+/** a one-line summary of a problem's text: its math written out in one line, $ marks dropped */
 function preview(text: string): string {
-  return text.replace(/\$\$[^$]*\$\$/g, '…').replace(/\$/g, '').replace(/\s+/g, ' ').trim();
+  // raw LaTeX read back as text, then printed the way a figure prints it (√, π, x²)
+  const read = (tex: string) => {
+    try {
+      return prettyGuide(latexToText(tex));
+    } catch {
+      return '…';
+    }
+  };
+  return text
+    .replace(/\$\$([^$]*)\$\$/g, (_, tex: string) => read(tex))
+    .replace(/\$([^$]*)\$/g, (_, m: string) => prettyGuide(m))
+    .replace(/\s+/g, ' ')
+    .trim();
 }
 
 function Field({ label, children }: { label: string; children: ReactNode }) {

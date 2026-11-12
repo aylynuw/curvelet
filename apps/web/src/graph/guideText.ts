@@ -40,6 +40,15 @@ export function prettyGuide(text: string): string {
     const limits = lo !== undefined && hi !== undefined ? `${small(lo, SUB) ?? `_${lo}`}${small(hi, SUP) ?? `^${hi}`}` : '';
     s = `${s.slice(0, k)}∫${limits}${e} d${v}${s.slice(a.end)}`;
   }
+  // limit(E, x, a) → lim x→a E
+  for (const name of ['limit(', 'lim(']) {
+    for (let k = s.indexOf(name); k >= 0; k = s.indexOf(name)) {
+      const a = args(s, k + name.length - 1);
+      if (!a || a.parts.length < 3) break;
+      const [e, v, to] = a.parts as [string, string, string];
+      s = `${s.slice(0, k)}lim ${v}→${to} ${e}${s.slice(a.end)}`;
+    }
+  }
   // sqrt(X) → √X, with brackets kept when X is more than one thing
   for (let k = s.indexOf('sqrt('); k >= 0; k = s.indexOf('sqrt(')) {
     const a = args(s, k + 'sqrt'.length);
@@ -52,7 +61,9 @@ export function prettyGuide(text: string): string {
   return s
     .replace(/(?<![A-Za-z])pi(?![A-Za-z])/g, 'π')
     .replace(/(?<![A-Za-z])theta(?![A-Za-z])/g, 'θ')
-    .replace(/\binfinity\b/g, '∞')
+    .replace(/(?<![A-Za-z])(?:infinity|inf|oo)(?![A-Za-z])/g, '∞')
+    // (x²) alone needs no brackets
+    .replace(/\(([\p{L}\p{N}]+[²³⁴⁵⁶⁷⁸⁹ⁿ]*)\)/gu, (m, x: string, at: number, all: string) => (at > 0 && /[\p{L}\p{N}]/u.test(all[at - 1]!) ? m : x))
     .replace(/\*/g, '');
 }
 

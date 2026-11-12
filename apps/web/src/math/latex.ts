@@ -288,13 +288,17 @@ export function textToLatex(text: string, { display = false }: { display?: boole
   const LEFT: Record<string, string> = { '(': '(', '[': '\\lbrack ', '{': '\\lbrace ' };
   const RIGHT: Record<string, string> = { ')': ')', ']': '\\rbrack ', '}': '\\rbrace ' };
   /** ( … ), or bare contents for a radical or an exponent. */
+  let parenDepth = 0;
   const group = (open: string, close: string, bare = false): string => {
     // a bracket straight after "(" or "," (a point inside a call: bezier((1, 2), …)) is written
     // \left( … \right), or MathLive merges the two "((" and drops the inner pair
+    // (and so is any bracket inside another one: solve(f(x) = 0) lost f's pair the same way)
     const before = tokens[i - 1];
-    const nested = open === '(' && before?.type === 'op' && (before.value === '(' || before.value === ',');
+    const nested = open === '(' && (parenDepth > 0 || (before?.type === 'op' && (before.value === '(' || before.value === ',')));
     i++; // open
+    if (open === '(') parenDepth++;
     const inner = seq([close]);
+    if (open === '(') parenDepth--;
     if (isOp(close)) i++;
     if (bare) return inner;
     return nested ? `\\left(${inner}\\right)` : `${LEFT[open]}${inner}${RIGHT[close]}`;

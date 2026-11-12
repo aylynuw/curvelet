@@ -15,3 +15,10 @@ describe('exam lengths typed as math', () => {
     expect(plainGuide('π/6')).toBe('pi/6');
   });
 });
+
+describe('problem summaries', () => {
+  it('writes limits in one line', () => {
+    expect(prettyGuide('limit((f(x) - x^3)/(x^2), x, inf) = 5')).toBe('lim x→∞ (f(x) - x³)/x² = 5');
+    expect(prettyGuide('limit(f(x)/x, x, 0)')).toBe('lim x→0 f(x)/x');
+  });
+});

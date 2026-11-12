@@ -26,6 +26,8 @@ export interface TapeEntry {
   def?: string;
   /** words, not a number ("function of x") */
   note?: boolean;
+  /** an indefinite integral: shown with + C (ans leaves it out) */
+  constant?: boolean;
 }
 type Format = 'exact' | 'decimal';
 
@@ -53,7 +55,7 @@ const store = (key: string, value: unknown) => {
 };
 
 /** what a result shows, in the chosen format; null when it isn't an answer */
-function answer(r: Result | undefined, t: Strings): { text: string; exact?: string; math?: boolean; note?: boolean } | null {
+function answer(r: Result | undefined, t: Strings): { text: string; exact?: string; math?: boolean; note?: boolean; constant?: boolean } | null {
   if (!r) return null;
   if (r.status === 'value') {
     if (r.value.kind === 'num' && r.value.z.im === 0) {
@@ -62,7 +64,8 @@ function answer(r: Result | undefined, t: Strings): { text: string; exact?: stri
     }
     return { text: r.text, exact: r.exact };
   }
-  if (r.status === 'symbolic' || r.status === 'solved') return { text: r.text, math: true };
+  if (r.status === 'symbolic') return { text: r.text, math: true, ...(r.constant ? { constant: true } : {}) };
+  if (r.status === 'solved') return { text: r.text, math: true };
   if (r.status === 'function') return { text: t.functionOf(r.params.join(', ')), note: true };
   if (r.status === 'relation') return { text: r.holds ? t.yes : t.no };
   return null;
@@ -135,7 +138,7 @@ export function CalculatorTool({
     if (/\bans\b/.test(e.source)) return e;
     const r = ws.result(`row:${e.id}`);
     const a = r && r.status !== 'pending' ? answer(r, t) : null;
-    return a ? { ...e, text: a.text, exact: a.exact, math: a.math, note: a.note } : e;
+    return a ? { ...e, text: a.text, exact: a.exact, math: a.math, note: a.note, constant: a.constant } : e;
   };
   ws.set('cur', input);
   const result = input.trim() ? ws.result('cur') : undefined;
@@ -143,7 +146,7 @@ export function CalculatorTool({
 
   const commit = () => {
     if (!live || !input.trim()) return;
-    const entry: TapeEntry = { id: place?.kind === 'edit' ? place.id : newId(), source: input, text: live.text, ...(live.exact ? { exact: live.exact } : {}), ...(live.math ? { math: true } : {}), ...(live.note ? { note: true } : {}), ...(curName && (result?.status === 'function' || result?.status === 'value') ? { def: curName } : {}) };
+    const entry: TapeEntry = { id: place?.kind === 'edit' ? place.id : newId(), source: input, text: live.text, ...(live.exact ? { exact: live.exact } : {}), ...(live.math ? { math: true } : {}), ...(live.note ? { note: true } : {}), ...(live.constant ? { constant: true } : {}), ...(curName && (result?.status === 'function' || result?.status === 'value') ? { def: curName } : {}) };
     setTape((tp) => {
       const k = place ? tp.findIndex((e) => e.id === place.id) : -1;
       if (k < 0) return [...tp, entry];
@@ -201,7 +204,7 @@ export function CalculatorTool({
                     <MathText text={e.source} />
                   </span>
                   <span className="calc__ans">
-                    {e.note ? <span className="calc__note">{e.text}</span> : format === 'exact' && e.exact ? <MathText text={e.exact} block /> : e.math ? <MathText text={e.text} block /> : <NumberText text={e.text} />}
+                    {e.note ? <span className="calc__note">{e.text}</span> : format === 'exact' && e.exact ? <MathText text={e.exact} block /> : e.math ? <MathText text={e.constant ? `${e.text} + C` : e.text} block /> : <NumberText text={e.text} />}
                   </span>
                 </button>
                 <span className="calc__row-tools">
@@ -278,11 +281,11 @@ export function CalculatorTool({
           ) : display !== null ? (
             <span className="calc__big">
               {format === 'decimal' && live?.exact && '≈ '}
-              {live?.note ? <span className="calc__note">{display}</span> : (format === 'exact' && live?.exact) || live?.math ? <MathText text={display} block /> : <NumberText text={display} />}
+              {live?.note ? <span className="calc__note">{display}</span> : (format === 'exact' && live?.exact) || live?.math ? <MathText text={live?.constant ? `${display} + C` : display} block /> : <NumberText text={display} />}
             </span>
           ) : last && !input.trim() ? (
             <span className="calc__big calc__big--quiet">
-              {format === 'exact' && last.exact ? <MathText text={last.exact} block /> : last.math ? <MathText text={last.text} block /> : <NumberText text={last.text} />}
+              {format === 'exact' && last.exact ? <MathText text={last.exact} block /> : last.math ? <MathText text={last.constant ? `${last.text} + C` : last.text} block /> : <NumberText text={last.text} />}
             </span>
           ) : null}
         </output>
