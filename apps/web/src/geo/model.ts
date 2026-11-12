@@ -472,3 +472,11 @@ export function cloneObjects(list: GeoObject[], into: GeoObject[], by: Pt, newId
   }
   return out;
 }
+
+/** a polygon's corner points in order (a regular polygon's are a, b, then its built corners) */
+export function cornerIds(o: GeoObject, objects: GeoObject[]): string[] {
+  if (o.kind === 'polygon') return o.pts;
+  if (o.kind !== 'regular') return [];
+  const built = objects.filter((v): v is Extract<GeoObject, { kind: 'vertex' }> => v.kind === 'vertex' && v.poly === o.id).sort((x, y) => x.k - y.k);
+  return [o.a, o.b, ...built.map((v) => v.id)];
+}

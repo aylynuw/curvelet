@@ -4,9 +4,11 @@ import { exactSqrt, exactText } from './exact';
 import { canvasToPdf, canvasToPng, copyFigure, download, figureBounds, figureSvg, svgToCanvas } from './exportFigure';
 import { renderFigure } from './figure';
 import { decorate } from './labels';
-import { cloneObjects, crossings, draggable, freeRoots, measure, nextName, refs, resolve, toLines, withAncestors, without, type Deco, type GeoObject, type Pt, type Shape } from './model';
-import { PropertiesPanel, type QuickAction } from './PropertiesPanel';
-import { BASE_PROPS, loadPresets, savePresets, type GeoProps, type Preset } from './props';
+import { cloneObjects, cornerIds, crossings, draggable, freeRoots, measure, nextName, refs, resolve, toLines, withAncestors, without, type Deco, type GeoObject, type Pt, type Shape } from './model';
+import { PropertiesPanel, type LengthTarget } from './PropertiesPanel';
+import { BASE_PROPS, type GeoProps } from './props';
+
+type QuickAction = 'lengths' | 'angles' | 'hide' | 'reset';
 import { recognize } from './sketch';
 import type { GeoStrings, GeoTool } from './strings';
 
@@ -29,17 +31,21 @@ interface Doc {
   exam: boolean;
   /** export margin, coordinate units */
   margin: number;
+  /** snap to midpoints and crossings (existing points always catch) */
+  snapPoints: boolean;
+  /** snap into line with other points, with guides drawn */
+  guides: boolean;
 }
 interface Snapshot {
   objects: GeoObject[];
   defaults: GeoProps;
 }
 const DOC_KEY = 'calculator.geometry.v1';
-const START: Doc = { objects: [], view: { cx: 0, cy: 0, s: 50 }, grid: true, axes: true, snap: true, defaults: BASE_PROPS, exam: false, margin: 0.5 };
+const START: Doc = { objects: [], view: { cx: 0, cy: 0, s: 50 }, grid: true, axes: true, snap: true, defaults: BASE_PROPS, exam: false, margin: 0.5, snapPoints: true, guides: true };
 function loadDoc(): Doc {
   try {
     const v = JSON.parse(localStorage.getItem(DOC_KEY) ?? 'null');
-    if (v && Array.isArray(v.objects) && v.view && typeof v.view.s === 'number') return { ...START, ...v, defaults: { ...BASE_PROPS, ...(v.defaults ?? {}) } };
+    if (v && Array.isArray(v.objects) && v.view && typeof v.view.s === 'number') return { ...START, ...v, defaults: { ...BASE_PROPS, ...(v.defaults ?? {}), areaLabel: 'hidden' } };
   } catch {
     // a fresh canvas
   }
@@ -60,12 +66,17 @@ const NEEDS: Partial<Record<GeoTool, Need[]>> = {
 const DRAG_TOOLS = new Set<GeoTool>(['segment', 'line', 'ray', 'circle', 'rect', 'square', 'triangle', 'ellipse', 'polygon']);
 /** tools that draw into a box */
 const BOX_TOOLS = new Set<GeoTool>(['rect', 'triangle', 'ellipse', 'square']);
-const GROUPS: GeoTool[][] = [
-  ['move', 'select', 'point', 'pen'],
-  ['segment', 'line', 'ray', 'polygon', 'rect', 'square', 'triangle', 'regular', 'circle', 'ellipse', 'compass'],
-  ['midpoint', 'perpendicular', 'parallel', 'bisector', 'intersection'],
-  ['angle', 'reflect', 'rotate', 'delete'],
-];
+type Group = 'line' | 'shape' | 'construct';
+/** the toolbar: the tools used most, and groups that open for the rest */
+const TOOLBAR: (GeoTool | Group)[] = ['select', 'point', 'line', 'shape', 'angle', 'construct'];
+const GROUP_TOOLS: Record<Group, GeoTool[]> = {
+  line: ['segment', 'line', 'ray'],
+  shape: ['rect', 'triangle', 'regular', 'polygon', 'circle', 'ellipse', 'pen'],
+  construct: ['midpoint', 'perpendicular', 'parallel', 'bisector', 'intersection', 'compass', 'reflect', 'rotate'],
+};
+/** one-letter shortcuts, as in drawing apps */
+const KEYS: Record<string, GeoTool> = { v: 'select', p: 'point', l: 'segment', r: 'rect', o: 'circle', e: 'ellipse', a: 'angle' };
+const KEY_OF = Object.fromEntries(Object.entries(KEYS).map(([k, t]) => [t, k.toUpperCase()])) as Partial<Record<GeoTool, string>>;
 const GREEK = 'αβγδεζηθ';
 const POINT_KINDS = new Set(['point', 'midpoint', 'intersection', 'reflect', 'rotate', 'vertex']);
 const HANDLES = ['nw', 'n', 'ne', 'e', 'se', 's', 'sw', 'w'] as const;
@@ -74,12 +85,20 @@ type Handle = (typeof HANDLES)[number];
 /** copied objects, kept for paste (with what they are built from) */
 let clipboard: GeoObject[] | null = null;
 
-type SnapKind = 'point' | 'midpoint' | 'intersection' | 'grid' | null;
+type SnapKind = 'point' | 'midpoint' | 'intersection' | 'guide' | 'grid' | null;
 interface Snap {
   at: Pt;
   /** an existing point there, to build on instead of adding a new one */
   id: string | null;
   kind: SnapKind;
+  /** alignment guides: the x and/or y another point shares */
+  guides?: { x?: number; y?: number };
+}
+/** a side of a polygon, or a segment: its two end points */
+interface SideHit {
+  owner: string;
+  k: number;
+  ids: [string, string];
 }
 interface Bounds {
   x0: number;
@@ -95,7 +114,8 @@ type Op =
   | { kind: 'turn'; center: Pt; from: number; orig: Map<string, Pt>; ell: Map<string, number>; moved: boolean }
   | { kind: 'marquee'; a: Pt; b: Pt; add: boolean }
   | { kind: 'label'; owner: string; key: string; start: Pt; orig: Pt; moved: boolean }
-  | { kind: 'pinch'; d0: number; c0: Pt; view: View };
+  | { kind: 'pinch'; d0: number; c0: Pt; view: View }
+  | { kind: 'angle'; first: SideHit; cur: SideHit | null };
 
 const nice = (raw: number) => {
   const p = 10 ** Math.floor(Math.log10(raw));
@@ -179,11 +199,25 @@ export function GeometryTool({ s, onSendToGraph }: { s: GeoStrings; onSendToGrap
   const [snapMark, setSnapMark] = useState<Snap | null>(null);
   const [mods, setMods] = useState({ shift: false, alt: false });
   const [locks, setLocks] = useState({ regular: false, center: false });
-  const [panel, setPanel] = useState<'objects' | 'props'>('objects');
+  const [panel, setPanel] = useState<'objects' | 'props'>('props');
   const [menu, setMenu] = useState<Pt | null>(null);
   const [exportOpen, setExportOpen] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
-  const [presets, setPresets] = useState<Preset[]>(loadPresets);
+  /** the toolbar menu that is open, where its button is */
+  const [openMenu, setOpenMenu] = useState<{ id: string; x: number; y: number } | null>(null);
+  /** the last tool used from each group, shown on the group's button */
+  const [last, setLast] = useState<Record<Group, GeoTool>>({ line: 'segment', shape: 'rect', construct: 'midpoint' });
+  // a menu closes when the press lands somewhere else
+  useEffect(() => {
+    if (!openMenu) return;
+    const close = (e: PointerEvent) => {
+      const t = e.target as Element;
+      if (!t.closest('.geo__pop') && !t.closest('[aria-expanded="true"]')) setOpenMenu(null);
+    };
+    document.addEventListener('pointerdown', close);
+    return () => document.removeEventListener('pointerdown', close);
+  }, [openMenu]);
+  const touchUI = useMemo(() => typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches, []);
   const [spaceDown, setSpaceDown] = useState(false);
   const [readout, setReadoutState] = useState<{ text: string; at: Pt } | null>(null);
   const svgRef = useRef<SVGSVGElement>(null);
@@ -215,8 +249,9 @@ export function GeometryTool({ s, onSendToGraph }: { s: GeoStrings; onSendToGrap
   const byId = useMemo(() => new Map(objects.map((o) => [o.id, o])), [objects]);
   const deco = useMemo(() => decorate(objects, shapes, defaults), [objects, shapes, defaults]);
   const selSet = useMemo(() => new Set(sel.filter((id) => byId.has(id))), [sel, byId]);
-  const regular = mods.shift || locks.regular;
-  const fromCenter = mods.alt || locks.center;
+  // Shift keeps shapes regular and resizing even; Alt works from the centre. On touch screens two buttons stand in for them.
+  const regular = mods.shift || (touchUI && locks.regular);
+  const fromCenter = mods.alt || (touchUI && locks.center);
 
   // ---- history: every action is one step, objects and document settings together
   const commit = (next: GeoObject[], nextDefaults: GeoProps = defaults) => {
@@ -288,22 +323,39 @@ export function GeometryTool({ s, onSendToGraph }: { s: GeoStrings; onSendToGrap
       if (d < bestD) [best, bestD] = [{ at: sh.at, id, kind: 'point' }, d];
     }
     if (best) return best;
-    for (const p of midpoints) {
-      const d = near(p);
-      if (d < bestD) [best, bestD] = [{ at: p, id: null, kind: 'midpoint' }, d];
+    if (doc.snapPoints) {
+      for (const p of midpoints) {
+        const d = near(p);
+        if (d < bestD) [best, bestD] = [{ at: p, id: null, kind: 'midpoint' }, d];
+      }
+      if (best) return best;
+      for (const p of meetings) {
+        const d = near(p);
+        if (d < bestD) [best, bestD] = [{ at: p, id: null, kind: 'intersection' }, d];
+      }
+      if (best) return best;
     }
-    if (best) return best;
-    for (const p of meetings) {
-      const d = near(p);
-      if (d < bestD) [best, bestD] = [{ at: p, id: null, kind: 'intersection' }, d];
-    }
-    if (best) return best;
     const w = toWorld(sp);
-    if (doc.snap) {
-      const g = gridStep / 2;
-      const r = { x: Math.round(w.x / g) * g, y: Math.round(w.y / g) * g };
-      if (near(r) < R) return { at: r, id: null, kind: 'grid' };
+    const g = gridStep / 2;
+    const grid = doc.snap ? { x: Math.round(w.x / g) * g, y: Math.round(w.y / g) * g } : null;
+    // in line with another point: across, down, or both
+    if (doc.guides) {
+      let gx: number | undefined;
+      let gy: number | undefined;
+      let [dx, dy] = [R * 0.8, R * 0.8];
+      for (const [id, sh] of shapes) {
+        if (sh.type !== 'point' || exclude?.has(id)) continue;
+        const q = toScreen(sh.at);
+        if (Math.abs(q.x - sp.x) < dx) [gx, dx] = [sh.at.x, Math.abs(q.x - sp.x)];
+        if (Math.abs(q.y - sp.y) < dy) [gy, dy] = [sh.at.y, Math.abs(q.y - sp.y)];
+      }
+      if (gx !== undefined || gy !== undefined) {
+        const along = (v: number, gv: number | null) => (gv !== null && Math.abs((gv - v) * view.s) < R ? gv : v);
+        const at = { x: gx ?? along(w.x, grid?.x ?? null), y: gy ?? along(w.y, grid?.y ?? null) };
+        return { at, id: null, kind: 'guide', guides: { x: gx, y: gy } };
+      }
     }
+    if (grid && near(grid) < R) return { at: grid, id: null, kind: 'grid' };
     return { at: w, id: null, kind: null };
   };
 
@@ -371,6 +423,30 @@ export function GeometryTool({ s, onSendToGraph }: { s: GeoStrings; onSendToGrap
       if (inside) return id;
     }
     return null;
+  };
+
+  /** the segment or polygon side under the pointer, with its end points */
+  const hitSide = (sp: Pt, skip?: SideHit | null): SideHit | null => {
+    let best: SideHit | null = null;
+    let bestD = coarse.current ? 16 : 9;
+    for (const o of objects) {
+      const sh = shapes.get(o.id);
+      if (!sh) continue;
+      const sides: SideHit[] = [];
+      if (o.kind === 'segment') sides.push({ owner: o.id, k: 0, ids: [o.a, o.b] });
+      if (sh.type === 'polygon') {
+        const ids = cornerIds(o, objects);
+        ids.forEach((id, k) => sides.push({ owner: o.id, k, ids: [id, ids[(k + 1) % ids.length]!] }));
+      }
+      for (const side of sides) {
+        if (skip && skip.owner === side.owner && skip.k === side.k) continue;
+        const [a, b] = side.ids.map((id) => shapes.get(id)) as [Shape | undefined, Shape | undefined];
+        if (a?.type !== 'point' || b?.type !== 'point') continue;
+        const d = distToShape(sp, { type: 'line', a: a.at, b: b.at, extent: 'segment' });
+        if (d < bestD) [best, bestD] = [side, d];
+      }
+    }
+    return best;
   };
 
   // ---- building
@@ -610,18 +686,24 @@ export function GeometryTool({ s, onSendToGraph }: { s: GeoStrings; onSendToGrap
   };
 
   // ---- keys: shortcuts like a drawing app (Cmd on Mac, Ctrl elsewhere)
-  const live = useRef({ step, deleteSel, duplicate, nudge, objects, selSet, gridStep, op, setOp, picks, boxStart });
-  live.current = { step, deleteSel, duplicate, nudge, objects, selSet, gridStep, op, setOp, picks, boxStart };
+  const live = useRef({ step, deleteSel, duplicate, nudge, objects, selSet, gridStep, op, setOp, picks, boxStart, chooseTool: ((t: GeoTool) => void t) as (t: GeoTool) => void });
+  live.current = { step, deleteSel, duplicate, nudge, objects, selSet, gridStep, op, setOp, picks, boxStart, chooseTool: (t: GeoTool) => chooseToolRef.current(t) };
+  const chooseToolRef = useRef<(t: GeoTool) => void>(() => {});
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       setMods({ shift: e.shiftKey, alt: e.altKey });
       const el = e.target as HTMLElement | null;
       if (el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.tagName === 'SELECT')) return;
-      const inGeo = !el || el === document.body || Boolean(el.closest('.geo'));
+      // anywhere but a text field: the geometry tool is the page while it is open
+      const inGeo = !el || el === document.body || Boolean(el.closest('.geo')) || el.tagName === 'BUTTON';
       if (!inGeo) return;
       const L = live.current;
       const mod = e.metaKey || e.ctrlKey;
       const k = e.key.toLowerCase();
+      if (!mod && !e.altKey && KEYS[k] && !e.repeat) {
+        L.chooseTool(KEYS[k]!);
+        return;
+      }
       if (e.key === ' ') {
         if (el?.tagName === 'BUTTON') return;
         e.preventDefault();
@@ -650,7 +732,8 @@ export function GeometryTool({ s, onSendToGraph }: { s: GeoStrings; onSendToGrap
       } else if (e.key === 'Escape') {
         setMenu(null);
         setExportOpen(false);
-        if (L.op?.kind === 'draw' || L.op?.kind === 'marquee') L.setOp(null);
+        setOpenMenu(null);
+        if (L.op?.kind === 'draw' || L.op?.kind === 'marquee' || L.op?.kind === 'angle') L.setOp(null);
         else if (L.picks.length || L.boxStart) {
           setPicks([]);
           setBoxStart(null);
@@ -679,7 +762,7 @@ export function GeometryTool({ s, onSendToGraph }: { s: GeoStrings; onSendToGrap
   }, []);
 
   // ---- pointer
-  const openMenu = (sp: Pt) => {
+  const openMenuAt = (sp: Pt) => {
     const id = hitPoint(sp) ?? hitCurve(sp, 'any');
     if (id && !selSet.has(id)) setSel([id]);
     setMenu(sp);
@@ -702,7 +785,7 @@ export function GeometryTool({ s, onSendToGraph }: { s: GeoStrings; onSendToGrap
         setStroke(null);
         return;
       }
-      press.current = { at: sp, timer: window.setTimeout(() => openMenu(sp), 550) };
+      press.current = { at: sp, timer: window.setTimeout(() => openMenuAt(sp), 550) };
     }
     if (e.button === 2) return;
     if (e.button === 1 || spaceDown) {
@@ -781,6 +864,13 @@ export function GeometryTool({ s, onSendToGraph }: { s: GeoStrings; onSendToGrap
       } else setOp({ kind: 'pan', from: sp, view, moved: false });
       return;
     }
+    if (tool === 'angle' && !picks.length) {
+      const first = hitSide(sp);
+      if (first) {
+        setOp({ kind: 'angle', first, cur: null });
+        return;
+      }
+    }
     const clicking = (tool === 'square' || ['segment', 'line', 'ray', 'circle'].includes(tool)) && picks.length > 0;
     if (DRAG_TOOLS.has(tool) && !clicking) {
       const start = snapAt(sp);
@@ -834,6 +924,10 @@ export function GeometryTool({ s, onSendToGraph }: { s: GeoStrings; onSendToGrap
     }
     if (o.kind === 'marquee') {
       setOp({ ...o, b: sp });
+      return;
+    }
+    if (o.kind === 'angle') {
+      setOp({ ...o, cur: hitSide(sp, o.first) });
       return;
     }
     if (o.kind === 'label') {
@@ -921,6 +1015,11 @@ export function GeometryTool({ s, onSendToGraph }: { s: GeoStrings; onSendToGrap
       else setFuture([]);
       return;
     }
+    if (o.kind === 'angle') {
+      const second = o.cur ?? hitSide(eventPt(e), o.first);
+      if (second) markAngle(o.first, second);
+      return;
+    }
     if (o.kind === 'marquee') {
       const [x0, x1] = [Math.min(o.a.x, o.b.x), Math.max(o.a.x, o.b.x)];
       const [y0, y1] = [Math.min(o.a.y, o.b.y), Math.max(o.a.y, o.b.y)];
@@ -967,6 +1066,29 @@ export function GeometryTool({ s, onSendToGraph }: { s: GeoStrings; onSendToGrap
       }
       pick(o.startScreen);
     }
+  };
+
+  /** the angle between two sides that meet: a polygon's own corner, or a new angle */
+  const markAngle = (a: SideHit, b: SideHit) => {
+    const vertex = a.ids.find((id) => b.ids.includes(id));
+    if (!vertex) {
+      setMessage(s.sidesMustMeet);
+      return;
+    }
+    const owner = byId.get(a.owner);
+    if (a.owner === b.owner && owner && (owner.kind === 'polygon' || owner.kind === 'regular')) {
+      const ids = cornerIds(owner, objects);
+      const k = ids.indexOf(vertex);
+      const corners = [...(owner.deco?.corners ?? [])];
+      while (corners.length < ids.length) corners.push({});
+      corners[k] = { ...corners[k], label: corners[k]?.text ? 'custom' : 'value' };
+      commit(objects.map((x) => (x.id === owner.id ? { ...x, deco: { ...x.deco, corners } } : x)));
+      setSel([owner.id]);
+      return;
+    }
+    const other = (h: SideHit) => h.ids.find((id) => id !== vertex)!;
+    const list = objects;
+    commit([...list, { id: newId(), kind: 'angle', name: angleName(list), a: other(a), vertex, c: other(b) }]);
   };
 
   const finishStroke = (st: Pt[]) => {
@@ -1035,7 +1157,38 @@ export function GeometryTool({ s, onSendToGraph }: { s: GeoStrings; onSendToGrap
       return { ...o, props: props as Partial<GeoProps> };
     });
   };
-  const onDeco = (id: string, change: (d: Deco) => Deco) => patchObjects(new Set([id]), (o) => ({ ...o, deco: change(o.deco ?? {}) }));
+  const onDeco = (id: string, change: (d: Deco) => Deco, props?: Partial<Record<keyof GeoProps, unknown>>) =>
+    patchObjects(new Set([id]), (o) => {
+      const own = { ...o.props, ...props } as Record<string, unknown>;
+      for (const k of Object.keys(own)) if (own[k] === undefined) delete own[k];
+      return { ...o, deco: change(o.deco ?? {}), props: own as Partial<GeoProps> };
+    });
+  const onPropsFor = (ids: string[], patch: Partial<Record<keyof GeoProps, unknown>>) => patchObjects(new Set(ids), (o) => ({ ...o, props: { ...o.props, ...(patch as Partial<GeoProps>) } }));
+  /** the two points a side (or a radius) runs between */
+  const endsOf = (t: LengthTarget): [string, string] | null => {
+    const o = byId.get(t.owner);
+    if (!o) return null;
+    if ('radius' in t) return o.kind === 'circle' ? [o.center, o.through] : null;
+    if (o.kind === 'segment') return [o.a, o.b];
+    const ids = cornerIds(o, objects);
+    return ids.length ? [ids[t.side]!, ids[(t.side + 1) % ids.length]!] : null;
+  };
+  const isFree = (id: string) => byId.get(id)?.kind === 'point';
+  const canEditLength = (t: LengthTarget) => {
+    const ends = endsOf(t);
+    return Boolean(ends && (isFree(ends[1]) || ('side' in t && isFree(ends[0]))));
+  };
+  /** a side typed to a length: its far end (or its near one) slides along the side */
+  const onLength = (t: LengthTarget, length: number) => {
+    const ends = endsOf(t);
+    if (!ends) return;
+    const [pa, pb] = ends.map((id) => shapes.get(id)) as [Shape | undefined, Shape | undefined];
+    if (pa?.type !== 'point' || pb?.type !== 'point') return;
+    const d = dist(pa.at, pb.at) || 1;
+    const u = { x: (pb.at.x - pa.at.x) / d, y: (pb.at.y - pa.at.y) / d };
+    const [move, at] = isFree(ends[1]) ? [ends[1], { x: pa.at.x + u.x * length, y: pa.at.y + u.y * length }] : [ends[0], { x: pb.at.x - u.x * length, y: pb.at.y - u.y * length }];
+    commit(objects.map((o) => (o.id === move && o.kind === 'point' ? { ...o, x: at.x, y: at.y } : o)));
+  };
   const onQuick = (a: QuickAction) => {
     const ids = new Set((selSet.size ? selected : objects).map((o) => o.id));
     patchObjects(ids, (o) => {
@@ -1063,22 +1216,6 @@ export function GeometryTool({ s, onSendToGraph }: { s: GeoStrings; onSendToGrap
       return { ...o, props, deco: next };
     });
   };
-  const onApplyPreset = (p: Preset, asDefault: boolean) => {
-    if (asDefault) commit(objects, { ...defaults, ...p.props });
-    else patchObjects(selSet, (o) => ({ ...o, props: { ...o.props, ...p.props } }));
-  };
-  const onSavePreset = (name: string) => {
-    const props = selSet.size ? { ...defaults, ...selected[0]!.props } : defaults;
-    const next = [...presets, { id: newId(), name, props }];
-    setPresets(next);
-    savePresets(next);
-  };
-  const onDeletePreset = (id: string) => {
-    const next = presets.filter((p) => p.id !== id);
-    setPresets(next);
-    savePresets(next);
-  };
-
   // ---- export
   const exportAs = async (kind: 'png2' | 'png4' | 'svg' | 'pdf' | 'copy') => {
     setExportOpen(false);
@@ -1202,21 +1339,92 @@ export function GeometryTool({ s, onSendToGraph }: { s: GeoStrings; onSendToGrap
     setPicks([]);
     setBoxStart(null);
     setMessage(null);
+    setOpenMenu(null);
+    const g = (Object.keys(GROUP_TOOLS) as Group[]).find((x) => GROUP_TOOLS[x].includes(id));
+    if (g) setLast((l) => ({ ...l, [g]: id }));
     if (id !== 'select' && id !== 'move') setSel([]);
   };
+  chooseToolRef.current = chooseTool;
+  const openAt = (id: string, el: Element) => {
+    if (openMenu?.id === id) return setOpenMenu(null);
+    const r = el.getBoundingClientRect();
+    setOpenMenu({ id, x: r.left, y: r.bottom + 4 });
+  };
+  const toolButton = (id: GeoTool) => (
+    <button key={id} type="button" className="geo__tool" aria-pressed={tool === id} title={KEY_OF[id] ? `${s.tools[id]} (${KEY_OF[id]})` : s.tools[id]} onClick={() => chooseTool(id)}>
+      {s.tools[id]}
+    </button>
+  );
+  const popover = (id: string, children: ReactElement | ReactElement[]) =>
+    openMenu?.id === id && (
+      <div className="geo__pop" role="menu" style={{ transform: `translate(${Math.round(openMenu.x)}px, ${Math.round(openMenu.y)}px)` }}>
+        {children}
+      </div>
+    );
+  const check = (label: string, on: boolean, set: (v: boolean) => void) => (
+    <label key={label} className="geo__pop-check">
+      <input type="checkbox" checked={on} onChange={(e) => set(e.target.checked)} />
+      {label}
+    </label>
+  );
+
+  // the sides the angle tool is joining
+  let angleMarks: ReactElement | null = null;
+  if (op?.kind === 'angle') {
+    const line = (h: SideHit, key: string) => {
+      const [a, b] = h.ids.map((id) => shapes.get(id)) as [Shape | undefined, Shape | undefined];
+      if (a?.type !== 'point' || b?.type !== 'point') return null;
+      const [p, q] = [toScreen(a.at), toScreen(b.at)];
+      return <line key={key} className="geo__side-pick" x1={p.x} y1={p.y} x2={q.x} y2={q.y} />;
+    };
+    angleMarks = (
+      <g>
+        {line(op.first, 'a')}
+        {op.cur && line(op.cur, 'b')}
+      </g>
+    );
+  }
+  // alignment guides across the canvas
+  const guideLines =
+    snapMark?.kind === 'guide' && snapMark.guides ? (
+      <g className="geo__guides">
+        {snapMark.guides.x !== undefined && <line x1={toScreen({ x: snapMark.guides.x, y: 0 }).x} x2={toScreen({ x: snapMark.guides.x, y: 0 }).x} y1={0} y2={size.h} />}
+        {snapMark.guides.y !== undefined && <line x1={0} x2={size.w} y1={toScreen({ x: 0, y: snapMark.guides.y }).y} y2={toScreen({ x: 0, y: snapMark.guides.y }).y} />}
+      </g>
+    ) : null;
 
   return (
     <div className="geo">
       <div className="geo__tools" role="toolbar" aria-label={s.toolbar}>
-        {GROUPS.map((group, k) => (
-          <div key={k} className="geo__group" role="group">
-            {group.map((id) => (
-              <button key={id} type="button" className="geo__tool" aria-pressed={tool === id} onClick={() => chooseTool(id)}>
-                {s.tools[id]}
-              </button>
-            ))}
-          </div>
-        ))}
+        <div className="geo__group" role="group">
+          {TOOLBAR.map((item) => {
+            if (!(item in GROUP_TOOLS)) return toolButton(item as GeoTool);
+            const g = item as Group;
+            const inGroup = GROUP_TOOLS[g].includes(tool);
+            const shown = inGroup ? tool : last[g];
+            return (
+              <span key={g} className="geo__split">
+                <button type="button" className="geo__tool" aria-pressed={inGroup} title={KEY_OF[shown] ? `${s.tools[shown]} (${KEY_OF[shown]})` : s.tools[shown]} onClick={() => chooseTool(shown)}>
+                  {g === 'construct' && !inGroup ? s.groups.construct : s.tools[shown]}
+                </button>
+                <button type="button" className="geo__tool geo__more" aria-label={s.moreTools(s.groups[g]!)} aria-expanded={openMenu?.id === g} onClick={(e) => openAt(g, e.currentTarget)}>
+                  <svg viewBox="0 0 10 10" width="10" height="10" aria-hidden="true">
+                    <path d="M2 3.5l3 3 3-3" stroke="currentColor" strokeWidth="1.4" fill="none" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                </button>
+                {popover(
+                  g,
+                  GROUP_TOOLS[g].map((t) => (
+                    <button key={t} type="button" role="menuitemradio" aria-checked={tool === t} className="menu__item geo__pop-item" onClick={() => chooseTool(t)}>
+                      <span>{s.tools[t]}</span>
+                      {KEY_OF[t] && <kbd className="geo__kbd">{KEY_OF[t]}</kbd>}
+                    </button>
+                  )),
+                )}
+              </span>
+            );
+          })}
+        </div>
         {tool === 'regular' && (
           <label className="geo__deg">
             {s.sides}
@@ -1229,13 +1437,91 @@ export function GeometryTool({ s, onSendToGraph }: { s: GeoStrings; onSendToGrap
             <input className="input input--code" type="number" value={degrees} step={15} onChange={(e) => setDegrees(Number(e.target.value) || 0)} />°
           </label>
         )}
-        <div className="geo__group geo__locks" role="group">
-          <button type="button" className="geo__tool" aria-pressed={locks.regular} title="Shift" onClick={() => setLocks((l) => ({ ...l, regular: !l.regular }))}>
-            {s.regularShape}
+        {touchUI && (
+          <div className="geo__group geo__locks" role="group">
+            <button type="button" className="geo__tool" aria-pressed={locks.regular} onClick={() => setLocks((l) => ({ ...l, regular: !l.regular }))}>
+              {s.regularShape}
+            </button>
+            <button type="button" className="geo__tool" aria-pressed={locks.center} onClick={() => setLocks((l) => ({ ...l, center: !l.center }))}>
+              {s.fromCenter}
+            </button>
+          </div>
+        )}
+
+        <div className="geo__tools-end">
+          <button type="button" className="icon-btn" aria-label={s.undo} title={`${s.undo} (⌘Z)`} disabled={!past.length} onClick={() => step('undo')}>
+            <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
+              <path d="M6 4L3 7l3 3M3 7h6.5a3.5 3.5 0 010 7H8" stroke="currentColor" strokeWidth="1.5" fill="none" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
           </button>
-          <button type="button" className="geo__tool" aria-pressed={locks.center} title="Alt / Option" onClick={() => setLocks((l) => ({ ...l, center: !l.center }))}>
-            {s.fromCenter}
+          <button type="button" className="icon-btn" aria-label={s.redo} title={`${s.redo} (⇧⌘Z)`} disabled={!future.length} onClick={() => step('redo')}>
+            <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
+              <path d="M10 4l3 3-3 3M13 7H6.5a3.5 3.5 0 000 7H8" stroke="currentColor" strokeWidth="1.5" fill="none" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
           </button>
+          <span className="geo__split">
+            <button type="button" className="btn btn--small btn--quiet" aria-expanded={openMenu?.id === 'snap'} onClick={(e) => openAt('snap', e.currentTarget)}>
+              {s.snapMenu}
+            </button>
+            {popover('snap', [
+              check(s.snapGrid, doc.snap, (v) => setDoc((d) => ({ ...d, snap: v }))),
+              check(s.snapPoints, doc.snapPoints, (v) => setDoc((d) => ({ ...d, snapPoints: v }))),
+              check(s.snapGuides, doc.guides, (v) => setDoc((d) => ({ ...d, guides: v }))),
+            ])}
+          </span>
+          <span className="geo__split">
+            <button type="button" className="btn btn--small btn--quiet" aria-expanded={openMenu?.id === 'view'} onClick={(e) => openAt('view', e.currentTarget)}>
+              {s.viewMenu}
+            </button>
+            {popover('view', [
+              check(s.grid, doc.grid, (v) => setDoc((d) => ({ ...d, grid: v }))),
+              check(s.axes, doc.axes, (v) => setDoc((d) => ({ ...d, axes: v }))),
+              check(s.examView, doc.exam, (v) => setDoc((d) => ({ ...d, exam: v }))),
+              <button
+                key="fit"
+                type="button"
+                className="menu__item geo__pop-item"
+                onClick={() => {
+                  fit();
+                  setOpenMenu(null);
+                }}
+              >
+                {s.fit}
+              </button>,
+            ])}
+          </span>
+          <span className="geo__split">
+            <button type="button" className="btn btn--small" aria-expanded={openMenu?.id === 'export'} onClick={(e) => openAt('export', e.currentTarget)}>
+              {s.exportMenu}
+            </button>
+            {popover(
+              'export',
+              <div className="geo__export-menu">
+                <p className="geo__export-scope">{selSet.size ? s.exportScopeSel : s.exportScopeAll}</p>
+                <label className="geo__export-margin">
+                  {s.margin}
+                  <input className="input input--num" type="number" min={0} max={5} step={0.1} value={doc.margin} onChange={(e) => setDoc((d) => ({ ...d, margin: Math.max(0, Math.min(5, Number(e.target.value) || 0)) }))} />
+                </label>
+                <div className="geo__export-buttons">
+                  <button type="button" className="btn btn--small" onClick={() => exportAs('png2')}>
+                    {s.exportPng(2)}
+                  </button>
+                  <button type="button" className="btn btn--small" onClick={() => exportAs('png4')}>
+                    {s.exportPng(4)}
+                  </button>
+                  <button type="button" className="btn btn--small" onClick={() => exportAs('svg')}>
+                    {s.exportSvg}
+                  </button>
+                  <button type="button" className="btn btn--small" onClick={() => exportAs('pdf')}>
+                    {s.exportPdf}
+                  </button>
+                  <button type="button" className="btn btn--small btn--primary" onClick={() => exportAs('copy')}>
+                    {s.copyImage}
+                  </button>
+                </div>
+              </div>,
+            )}
+          </span>
         </div>
       </div>
 
@@ -1259,18 +1545,20 @@ export function GeometryTool({ s, onSendToGraph }: { s: GeoStrings; onSendToGrap
             onWheel={onWheel}
             onContextMenu={(e) => {
               e.preventDefault();
-              openMenu(eventPt(e));
+              openMenuAt(eventPt(e));
             }}
           >
             {gridLines()}
+            {guideLines}
             {figure}
+            {angleMarks}
             {preview}
             {stroke && <polyline className="geo__ink" points={stroke.map((p) => `${p.x},${p.y}`).join(' ')} />}
             {snapMark?.kind && (
               <g className="geo__snap">
-                <circle cx={toScreen(snapMark.at).x} cy={toScreen(snapMark.at).y} r={7} />
+                <circle cx={toScreen(snapMark.at).x} cy={toScreen(snapMark.at).y} r={snapMark.kind === 'guide' ? 4 : 7} />
                 <text x={toScreen(snapMark.at).x + 10} y={toScreen(snapMark.at).y - 10}>
-                  {s.snapKinds[snapMark.kind]}
+                  {snapMark.kind === 'guide' ? s.guide : s.snapKinds[snapMark.kind]}
                 </text>
               </g>
             )}
@@ -1295,7 +1583,6 @@ export function GeometryTool({ s, onSendToGraph }: { s: GeoStrings; onSendToGrap
               hasSel={selSet.size > 0}
               canPaste={Boolean(clipboard)}
               onClose={() => setMenu(null)}
-              onProps={onProps}
               onQuick={onQuick}
               onDuplicate={() => duplicate()}
               onCopy={() => {
@@ -1309,75 +1596,12 @@ export function GeometryTool({ s, onSendToGraph }: { s: GeoStrings; onSendToGrap
         </section>
 
         <aside className="geo__side" aria-label={s.objects}>
-          <div className="geo__actions">
-            <button type="button" className="icon-btn" aria-label={s.undo} title={s.undo} disabled={!past.length} onClick={() => step('undo')}>
-              <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
-                <path d="M6 4L3 7l3 3M3 7h6.5a3.5 3.5 0 010 7H8" stroke="currentColor" strokeWidth="1.5" fill="none" strokeLinecap="round" strokeLinejoin="round" />
-              </svg>
-            </button>
-            <button type="button" className="icon-btn" aria-label={s.redo} title={s.redo} disabled={!future.length} onClick={() => step('redo')}>
-              <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
-                <path d="M10 4l3 3-3 3M13 7H6.5a3.5 3.5 0 000 7H8" stroke="currentColor" strokeWidth="1.5" fill="none" strokeLinecap="round" strokeLinejoin="round" />
-              </svg>
-            </button>
-            <label className="check">
-              <input type="checkbox" checked={doc.grid} onChange={(e) => setDoc((d) => ({ ...d, grid: e.target.checked }))} />
-              {s.grid}
-            </label>
-            <label className="check">
-              <input type="checkbox" checked={doc.axes} onChange={(e) => setDoc((d) => ({ ...d, axes: e.target.checked }))} />
-              {s.axes}
-            </label>
-            <label className="check">
-              <input type="checkbox" checked={doc.snap} onChange={(e) => setDoc((d) => ({ ...d, snap: e.target.checked }))} />
-              {s.snap}
-            </label>
-            <label className="check">
-              <input type="checkbox" checked={doc.exam} onChange={(e) => setDoc((d) => ({ ...d, exam: e.target.checked }))} />
-              {s.examView}
-            </label>
-            <button type="button" className="btn btn--small btn--quiet" onClick={fit}>
-              {s.fit}
-            </button>
-            <div className="geo__export">
-              <button type="button" className="btn btn--small" aria-expanded={exportOpen} onClick={() => setExportOpen((v) => !v)}>
-                {s.exportMenu}
-              </button>
-              {exportOpen && (
-                <div className="geo__export-menu" role="group" aria-label={s.exportMenu}>
-                  <p className="geo__export-scope">{selSet.size ? s.exportScopeSel : s.exportScopeAll}</p>
-                  <label className="geo__export-margin">
-                    {s.margin}
-                    <input className="input input--num" type="number" min={0} max={5} step={0.1} value={doc.margin} onChange={(e) => setDoc((d) => ({ ...d, margin: Math.max(0, Math.min(5, Number(e.target.value) || 0)) }))} />
-                  </label>
-                  <div className="geo__export-buttons">
-                    <button type="button" className="btn btn--small" onClick={() => exportAs('png2')}>
-                      {s.exportPng(2)}
-                    </button>
-                    <button type="button" className="btn btn--small" onClick={() => exportAs('png4')}>
-                      {s.exportPng(4)}
-                    </button>
-                    <button type="button" className="btn btn--small" onClick={() => exportAs('svg')}>
-                      {s.exportSvg}
-                    </button>
-                    <button type="button" className="btn btn--small" onClick={() => exportAs('pdf')}>
-                      {s.exportPdf}
-                    </button>
-                    <button type="button" className="btn btn--small btn--primary" onClick={() => exportAs('copy')}>
-                      {s.copyImage}
-                    </button>
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
-
           <div className="segmented geo__panel-tabs" role="group" aria-label={s.objects}>
-            <button type="button" aria-pressed={panel === 'objects'} onClick={() => setPanel('objects')}>
-              {s.objectsTab}
-            </button>
             <button type="button" aria-pressed={panel === 'props'} onClick={() => setPanel('props')}>
               {s.propertiesTab}
+            </button>
+            <button type="button" aria-pressed={panel === 'objects'} onClick={() => setPanel('objects')}>
+              {s.objectsTab}
             </button>
           </div>
 
@@ -1389,13 +1613,11 @@ export function GeometryTool({ s, onSendToGraph }: { s: GeoStrings; onSendToGrap
               shapes={shapes}
               defaults={defaults}
               onProps={onProps}
+              onPropsFor={onPropsFor}
               onDeco={onDeco}
               onRename={(id, name) => patchObjects(new Set([id]), (o) => ({ ...o, name }))}
-              onQuick={onQuick}
-              presets={presets}
-              onApplyPreset={onApplyPreset}
-              onSavePreset={onSavePreset}
-              onDeletePreset={onDeletePreset}
+              onLength={onLength}
+              canEditLength={canEditLength}
             />
           ) : objects.length === 0 ? (
             <p className="geo__empty">{s.empty}</p>
@@ -1403,7 +1625,7 @@ export function GeometryTool({ s, onSendToGraph }: { s: GeoStrings; onSendToGrap
             <ul className="geo__list">
               {objects.map((o) => {
                 const sh = shapes.get(o.id);
-                const m = sh ? measure(sh) : null;
+                const m = sh && (sh.type === 'line' || sh.type === 'circle' || sh.type === 'angle') ? measure(sh) : null;
                 const on = selSet.has(o.id);
                 return (
                   <li key={o.id} className={`geo__item${on ? ' is-selected' : ''}`}>
@@ -1411,7 +1633,7 @@ export function GeometryTool({ s, onSendToGraph }: { s: GeoStrings; onSendToGrap
                       type="button"
                       className="geo__item-main"
                       onClick={(e) => {
-                        if (tool !== 'select' && tool !== 'move') setTool('select');
+                        if (tool !== 'select') chooseTool('select');
                         setSel((cur) => (e.shiftKey || e.metaKey || e.ctrlKey ? (cur.includes(o.id) ? cur.filter((x) => x !== o.id) : [...cur, o.id]) : on && cur.length === 1 ? [] : [o.id]));
                       }}
                       aria-pressed={on}
@@ -1444,14 +1666,13 @@ export function GeometryTool({ s, onSendToGraph }: { s: GeoStrings; onSendToGrap
   );
 }
 
-/** right-click or long-press: the common label settings and the edit commands */
+/** right-click or long-press: quick label actions and the edit commands */
 function ContextMenu({
   s,
   at,
   hasSel,
   canPaste,
   onClose,
-  onProps,
   onQuick,
   onDuplicate,
   onCopy,
@@ -1464,7 +1685,6 @@ function ContextMenu({
   hasSel: boolean;
   canPaste: boolean;
   onClose: () => void;
-  onProps: (patch: Partial<Record<keyof GeoProps, unknown>>) => void;
   onQuick: (a: QuickAction) => void;
   onDuplicate: () => void;
   onCopy: () => void;
@@ -1476,31 +1696,19 @@ function ContextMenu({
   useEffect(() => {
     ref.current?.querySelector('button')?.focus();
   }, []);
-  const item = (label: string, run: () => void, disabled = false) => (
+  const item = (label: string, run: () => void, disabled = false, keys?: string) => (
     <button
       type="button"
       role="menuitem"
-      className="menu__item"
+      className="menu__item geo__pop-item"
       disabled={disabled}
       onClick={() => {
         run();
         onClose();
       }}
     >
-      {label}
-    </button>
-  );
-  const chip = (label: string, run: () => void) => (
-    <button
-      type="button"
-      role="menuitem"
-      className="geo__chip"
-      onClick={() => {
-        run();
-        onClose();
-      }}
-    >
-      {label}
+      <span>{label}</span>
+      {keys && <kbd className="geo__kbd">{keys}</kbd>}
     </button>
   );
   return (
@@ -1519,28 +1727,16 @@ function ContextMenu({
         }
       }}
     >
-      <p className="geo__menu-title">{s.format}</p>
-      <div className="geo__menu-row">
-        {chip(s.formats.auto!.split(' ')[0]!, () => onProps({ format: 'auto' }))}
-        {chip('9.07', () => onProps({ format: 'decimal' }))}
-        {chip('3√2', () => onProps({ format: 'radical' }))}
-        {chip('7/3', () => onProps({ format: 'fraction' }))}
-        {chip('4π', () => onProps({ format: 'pi' }))}
-      </div>
-      <p className="geo__menu-title">{s.ticks}</p>
-      <div className="geo__menu-row">{s.tickOptions.map((t, k) => <span key={k}>{chip(t, () => onProps({ ticks: k }))}</span>)}</div>
-      <p className="geo__menu-title">{s.arrows}</p>
-      <div className="geo__menu-row">{s.arrowOptions.map((t, k) => <span key={k}>{chip(t, () => onProps({ arrows: k }))}</span>)}</div>
-      <hr className="geo__menu-rule" />
       {item(s.showLengths, () => onQuick('lengths'))}
       {item(s.showAngles, () => onQuick('angles'))}
       {item(s.hideLabels, () => onQuick('hide'))}
       {item(s.resetLabels, () => onQuick('reset'))}
       <hr className="geo__menu-rule" />
-      {item(s.duplicate, onDuplicate, !hasSel)}
-      {item(s.copy, onCopy, !hasSel)}
-      {item(s.paste, onPaste, !canPaste)}
-      {item(s.deleteSelected, onDelete, !hasSel)}
+      {item(s.duplicate, onDuplicate, !hasSel, '⌘D')}
+      {item(s.copy, onCopy, !hasSel, '⌘C')}
+      {item(s.paste, onPaste, !canPaste, '⌘V')}
+      {item(s.deleteSelected, onDelete, !hasSel, '⌫')}
+      <hr className="geo__menu-rule" />
       {item(s.moreProperties, onMore)}
     </div>
   );

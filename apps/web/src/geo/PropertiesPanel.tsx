@@ -1,20 +1,19 @@
+import { DEFAULT_SETTINGS, EMPTY_ENV, evaluate, parse } from '@math/engine';
 import { useEffect, useState, type ReactNode } from 'react';
 import { formatMeasure } from './exact';
-import { measuresOf } from './labels';
-import type { Deco, GeoObject, LabelPart, Shape } from './model';
-import { BUILT_IN_PRESETS, propsOf, type GeoProps, type Preset } from './props';
+import { angleAt, angleMeasure, lengthMeasure } from './labels';
+import { cornerIds, type Deco, type GeoObject, type LabelPart, type Pt, type Shape } from './model';
+import { propsOf, type GeoProps } from './props';
 import type { GeoStrings } from './strings';
 
-export type QuickAction = 'lengths' | 'angles' | 'hide' | 'reset';
-type Key = keyof GeoProps;
-const MIXED = '\u0000mixed';
-const DEFAULT = '\u0000default';
+/** which length a row edits */
+export type LengthTarget = { owner: string; side: number } | { owner: string; radius: true };
 
 /**
- * The Properties tab: the settings of the selection, or the document's when
- * nothing is selected. Each setting of an object is Default (it follows the
- * document) or its own; with several objects selected a change applies to all
- * of them, and a setting they don't share shows as —.
+ * The Properties tab, kept to what a figure for a worksheet needs: each side
+ * as a row (변 AB: shown or not, its length, its label, an equal-length mark),
+ * each angle (∠ABC), a circle's radius, point names, and how numbers are
+ * written. With nothing selected it shows the document's number settings.
  */
 export function PropertiesPanel({
   s,
@@ -23,237 +22,204 @@ export function PropertiesPanel({
   shapes,
   defaults,
   onProps,
+  onPropsFor,
   onDeco,
   onRename,
-  onQuick,
-  presets,
-  onApplyPreset,
-  onSavePreset,
-  onDeletePreset,
+  onLength,
+  canEditLength,
 }: {
   s: GeoStrings;
   selected: GeoObject[];
   objects: GeoObject[];
   shapes: Map<string, Shape>;
   defaults: GeoProps;
-  /** a value of undefined puts the setting back to Default */
-  onProps: (patch: Partial<Record<Key, GeoProps[Key] | undefined>>) => void;
+  /** the selection's settings, or the document's with nothing selected; undefined puts one back to the document's */
+  onProps: (patch: Partial<Record<keyof GeoProps, unknown>>) => void;
+  /** settings for particular objects (a polygon's corner points) */
+  onPropsFor: (ids: string[], patch: Partial<Record<keyof GeoProps, unknown>>) => void;
   onDeco: (id: string, change: (d: Deco) => Deco) => void;
   onRename: (id: string, name: string) => void;
-  onQuick: (a: QuickAction) => void;
-  presets: Preset[];
-  onApplyPreset: (p: Preset, asDefault: boolean) => void;
-  onSavePreset: (name: string) => void;
-  onDeletePreset: (id: string) => void;
+  onLength: (t: LengthTarget, length: number) => void;
+  canEditLength: (t: LengthTarget) => boolean;
 }) {
-  const doc = selected.length === 0;
-  const kinds = new Set(selected.map((o) => o.kind));
-  const all = doc;
-  const has = (...k: string[]) => all || k.some((x) => kinds.has(x as GeoObject['kind']));
-  const isPoint = has('point', 'midpoint', 'intersection', 'reflect', 'rotate', 'vertex');
-
-  /** the shared value of a setting, Default, or mixed */
-  const get = (key: Key): string => {
-    if (doc) return String(defaults[key]);
-    const vals = selected.map((o) => (o.props?.[key] === undefined ? DEFAULT : String(o.props[key])));
-    return vals.every((v) => v === vals[0]) ? vals[0]! : MIXED;
-  };
-  const set = (key: Key, raw: string) => {
-    if (raw === MIXED) return;
-    if (raw === DEFAULT) return onProps({ [key]: undefined });
-    const base = defaults[key];
-    const value = typeof base === 'number' ? Number(raw) : typeof base === 'boolean' ? raw === 'true' : raw;
-    onProps({ [key]: value as GeoProps[Key] });
-  };
-
-  const c: Ctx = { get, set, doc, defaults, s };
-  const onOff: [string, string][] = [
-    ['true', s.on],
-    ['false', s.off],
-  ];
-  const modes: [string, string][] = ['hidden', 'value', 'custom'].map((m) => [m, s.labelModes[m]!]);
+  const byId = new Map(objects.map((o) => [o.id, o]));
+  const name = (id: string) => byId.get(id)?.name ?? '?';
   const one = selected.length === 1 ? selected[0]! : null;
   const shape = one ? shapes.get(one.id) : undefined;
   const p = propsOf(defaults, one?.props);
+  const fmt = (v: ReturnType<typeof lengthMeasure>) => formatMeasure(v, p);
 
-  // the unit: none, cm, m, or typed
-  const unitValue = get('unit');
-  const [customUnit, setCustomUnit] = useState(false);
-  const knownUnit = ['', 'cm', 'm', DEFAULT, MIXED].includes(unitValue);
+  /** a side's or corner's own settings, changed */
+  const setPart = (o: GeoObject, which: 'sides' | 'corners', k: number, count: number, change: Partial<LabelPart>) =>
+    onDeco(o.id, (d) => {
+      const list = [...(d[which] ?? [])];
+      while (list.length < count) list.push({});
+      const next: LabelPart = { ...list[k], ...change };
+      for (const key of Object.keys(next) as (keyof LabelPart)[]) if (next[key] === undefined || next[key] === '') delete next[key];
+      list[k] = next;
+      return { ...d, [which]: list };
+    });
+
+  let body: ReactNode;
+  if (!selected.length) {
+    body = (
+      <>
+        <p className="gp__note">{s.docNote}</p>
+        <Notation s={s} value={defaults} doc onChange={onProps} />
+        <Toggle label={s.vertexNames} on={defaults.pointLabel} onChange={(v) => onProps({ pointLabel: v })} />
+        <Toggle label={s.equalTicks} on={defaults.autoTicks} onChange={(v) => onProps({ autoTicks: v })} />
+      </>
+    );
+  } else if (one && shape?.type === 'polygon') {
+    const ids = cornerIds(one, objects);
+    const n = shape.pts.length;
+    const sideMode = (k: number) => one.deco?.sides?.[k]?.label ?? p.sideLabel;
+    const cornerMode = (k: number) => one.deco?.corners?.[k]?.label ?? p.cornerLabel;
+    const points = ids.map((id) => byId.get(id)).filter((o): o is GeoObject => Boolean(o));
+    body = (
+      <>
+        <Section title={s.sidesTitle}>
+          {shape.pts.map((a, k) => {
+            const b = shape.pts[(k + 1) % n]!;
+            const ab = `${name(ids[k]!)}${name(ids[(k + 1) % n]!)}`;
+            const part = one.deco?.sides?.[k] ?? {};
+            const target = { owner: one.id, side: k };
+            return (
+              <Row
+                key={k}
+                s={s}
+                title={s.sideRow(ab)}
+                shown={sideMode(k) !== 'hidden'}
+                onShown={(v) => setPart(one, 'sides', k, n, { label: v ? (part.text ? 'custom' : 'value') : 'hidden' })}
+                value={fmt(lengthMeasure(a, b))}
+                length={canEditLength(target) ? { now: Math.hypot(b.x - a.x, b.y - a.y), set: (l) => onLength(target, l) } : null}
+                label={part.label === 'custom' ? (part.text ?? '') : ''}
+                onLabel={(t) => setPart(one, 'sides', k, n, t ? { label: 'custom', text: t } : { label: sideMode(k) === 'hidden' ? 'hidden' : 'value', text: undefined })}
+                ticks={part.ticks ?? p.ticks}
+                onTicks={(t) => setPart(one, 'sides', k, n, { ticks: t })}
+              />
+            );
+          })}
+        </Section>
+        <Section title={s.anglesTitle}>
+          {shape.pts.map((v, k) => {
+            const [prev, next] = [shape.pts[(k + n - 1) % n]!, shape.pts[(k + 1) % n]!];
+            const abc = `${name(ids[(k + n - 1) % n]!)}${name(ids[k]!)}${name(ids[(k + 1) % n]!)}`;
+            const part = one.deco?.corners?.[k] ?? {};
+            return (
+              <Row
+                key={k}
+                s={s}
+                title={s.angleRow(abc)}
+                shown={cornerMode(k) !== 'hidden'}
+                onShown={(on) => setPart(one, 'corners', k, n, { label: on ? (part.text ? 'custom' : 'value') : 'hidden' })}
+                value={formatMeasure(angleMeasure(angleAt(prev, v, next)), p)}
+                label={part.label === 'custom' ? (part.text ?? '') : ''}
+                onLabel={(t) => setPart(one, 'corners', k, n, t ? { label: 'custom', text: t } : { label: cornerMode(k) === 'hidden' ? 'hidden' : 'value', text: undefined })}
+              />
+            );
+          })}
+        </Section>
+        <Toggle
+          label={s.vertexNames}
+          on={points.every((o) => propsOf(defaults, o.props).pointLabel)}
+          onChange={(v) => onPropsFor(points.map((o) => o.id), { pointLabel: v })}
+        />
+        <Notation s={s} value={p} own={one.props} onChange={onProps} />
+      </>
+    );
+  } else if (one && shape?.type === 'line' && one.kind === 'segment') {
+    const target = { owner: one.id, side: 0 };
+    body = (
+      <>
+        <Section title={s.sidesTitle}>
+          <Row
+            s={s}
+            title={s.segRow(`${name(one.a)}${name(one.b)}`)}
+            shown={p.segLabel !== 'hidden'}
+            onShown={(v) => onProps({ segLabel: v ? (one.deco?.text ? 'custom' : 'value') : 'hidden' })}
+            value={fmt(lengthMeasure(shape.a, shape.b))}
+            length={canEditLength(target) ? { now: Math.hypot(shape.b.x - shape.a.x, shape.b.y - shape.a.y), set: (l) => onLength(target, l) } : null}
+            label={p.segLabel === 'custom' ? (one.deco?.text ?? '') : ''}
+            onLabel={(t) => {
+              onDeco(one.id, (d) => ({ ...d, text: t || undefined }));
+              onProps({ segLabel: t ? 'custom' : p.segLabel === 'hidden' ? 'hidden' : 'value' });
+            }}
+            ticks={p.ticks}
+            onTicks={(t) => onProps({ ticks: t })}
+          />
+        </Section>
+        <Notation s={s} value={p} own={one.props} onChange={onProps} />
+      </>
+    );
+  } else if (one && shape?.type === 'circle') {
+    const target = { owner: one.id, radius: true as const };
+    const shown = p.circleLine === 'radius' || p.circleValue === 'radius';
+    body = (
+      <>
+        <Section title={s.kinds[one.kind]}>
+          <Row
+            s={s}
+            title={s.radiusRow}
+            shown={shown}
+            onShown={(v) => onProps(v ? { circleLine: 'radius', circleValue: 'radius' } : { circleLine: 'none', circleValue: 'hidden' })}
+            value={fmt({ value: shape.r, exact: lengthMeasure({ x: 0, y: 0 }, { x: shape.r, y: 0 }).exact, kind: 'length' })}
+            length={canEditLength(target) ? { now: shape.r, set: (l) => onLength(target, l) } : null}
+            label={one.deco?.text ?? ''}
+            onLabel={(t) => {
+              onDeco(one.id, (d) => ({ ...d, text: t || undefined }));
+              if (t && !shown) onProps({ circleLine: 'radius', circleValue: 'radius' });
+            }}
+          />
+        </Section>
+        <Notation s={s} value={p} own={one.props} onChange={onProps} />
+      </>
+    );
+  } else if (one && shape?.type === 'angle' && one.kind === 'angle') {
+    body = (
+      <Section title={s.anglesTitle}>
+        <Row
+          s={s}
+          title={s.angleRow(`${name(one.a)}${name(one.vertex)}${name(one.c)}`)}
+          shown={p.angleLabel !== 'hidden'}
+          onShown={(v) => onProps({ angleLabel: v ? (one.deco?.text ? 'custom' : 'value') : 'hidden' })}
+          value={formatMeasure(angleMeasure(shape.degrees), p)}
+          label={p.angleLabel === 'custom' ? (one.deco?.text ?? '') : ''}
+          onLabel={(t) => {
+            onDeco(one.id, (d) => ({ ...d, text: t || undefined }));
+            onProps({ angleLabel: t ? 'custom' : 'value' });
+          }}
+        />
+      </Section>
+    );
+  } else if (one && shape?.type === 'point') {
+    body = (
+      <>
+        <label className="gp__row">
+          <span className="gp__label">{s.pointRow}</span>
+          <CommitInput className="input gp__input" value={one.name} onCommit={(t) => t.trim() && onRename(one.id, t.trim())} />
+        </label>
+        <Toggle label={s.vertexNames} on={p.pointLabel} onChange={(v) => onProps({ pointLabel: v })} />
+      </>
+    );
+  } else {
+    body = <Notation s={s} value={p} own={one ? one.props : sharedOwn(selected)} onChange={onProps} />;
+  }
 
   return (
     <div className="gp">
-      <p className="gp__head">{doc ? s.docDefaults : selected.length === 1 ? `${one!.name} · ${s.kinds[one!.kind]}` : s.selectedCount(selected.length)}</p>
-      {doc && <p className="gp__note">{s.docDefaultsNote}</p>}
-
-      {one && shape && <Measures s={s} o={one} shape={shape} p={p} />}
-
-      <Section title={s.numberFormat}>
-        <Pick c={c} k="format" label={s.format} options={['auto', 'decimal', 'radical', 'fraction', 'pi'].map((f) => [f, s.formats[f]!])} />
-        <Pick c={c} k="decimals" label={s.decimals} options={[0, 1, 2, 3, 4].map((d) => [String(d), String(d)])} />
-        <label className="gp__row">
-          <span className="gp__label">{s.unit}</span>
-          <select
-            className="input gp__input"
-            value={customUnit || !knownUnit ? 'custom' : unitValue}
-            onChange={(e) => {
-              const v = e.target.value;
-              setCustomUnit(v === 'custom');
-              if (v !== 'custom') set('unit', v);
-            }}
-          >
-            {unitValue === MIXED && <option value={MIXED}>{s.mixed}</option>}
-            {!doc && <option value={DEFAULT}>{`${s.default} (${defaults.unit || s.units['']})`}</option>}
-            {['', 'cm', 'm', 'custom'].map((u) => (
-              <option key={u} value={u}>
-                {s.units[u]}
-              </option>
-            ))}
-          </select>
-        </label>
-        {(customUnit || !knownUnit) && (
-          <label className="gp__row">
-            <span className="gp__label">{s.customUnit}</span>
-            <CommitInput value={knownUnit ? '' : unitValue} onCommit={(t) => set('unit', t)} />
-          </label>
-        )}
-      </Section>
-
-      {has('segment', 'polygon', 'regular', 'line', 'ray') && (
-        <Section title={s.lengths}>
-          {has('segment') && <Pick c={c} k="segLabel" label={`${s.label} (${s.kinds.segment})`} options={modes} />}
-          {has('polygon', 'regular') && <Pick c={c} k="sideLabel" label={`${s.label} (${s.sideList})`} options={modes} />}
-          {one?.kind === 'segment' && p.segLabel === 'custom' && <DecoText s={s} o={one} onDeco={onDeco} />}
-          <Pick c={c} k="sideStyle" label={s.sideStyle} options={['beside', 'dimension'].map((m) => [m, s.sideStyles[m]!])} />
-          <Num c={c} k="dimOffset" label={s.offset} step={0.1} min={0.1} max={3} />
-          <Pick c={c} k="ticks" label={s.ticks} options={s.tickOptions.map((t, k) => [String(k), t])} />
-          <Pick c={c} k="arrows" label={s.arrows} options={s.arrowOptions.map((t, k) => [String(k), t])} />
-          {doc && <Pick c={c} k="autoTicks" label={s.autoTicks} options={onOff} />}
-        </Section>
-      )}
-
-      {one && shape?.type === 'polygon' && <Parts s={s} o={one} objects={objects} count={shape.pts.length} onDeco={onDeco} />}
-
-      {has('polygon', 'regular', 'angle') && (
-        <Section title={s.angles}>
-          {has('polygon', 'regular') && <Pick c={c} k="cornerLabel" label={`${s.angleLabel} (${s.kinds.polygon})`} options={modes} />}
-          {has('angle') && <Pick c={c} k="angleLabel" label={`${s.angleLabel} (${s.kinds.angle})`} options={modes} />}
-          {one?.kind === 'angle' && p.angleLabel === 'custom' && <DecoText s={s} o={one} onDeco={onDeco} />}
-          <Pick c={c} k="angleArcs" label={s.arcs} options={s.arcOptions.map((t, k) => [String(k + 1), t])} />
-          <Num c={c} k="arcSize" label={s.arcSize} step={0.1} min={0.2} max={2} />
-          <Pick c={c} k="rightMark" label={s.rightMark} options={['auto', 'always', 'off'].map((m) => [m, s.rightMarks[m]!])} />
-        </Section>
-      )}
-
-      {has('circle', 'compass') && (
-        <Section title={s.circle}>
-          <Pick c={c} k="circleLine" label={s.circleLine} options={['none', 'radius', 'diameter'].map((m) => [m, s.circleLines[m]!])} />
-          <Pick c={c} k="circleValue" label={s.circleValue} options={['hidden', 'radius', 'diameter', 'area', 'circumference'].map((m) => [m, s.circleValues[m]!])} />
-          <Pick c={c} k="centerMark" label={s.centerMark} options={onOff} />
-          {one && (one.kind === 'circle' || one.kind === 'compass') && <DecoText s={s} o={one} onDeco={onDeco} />}
-        </Section>
-      )}
-
-      {has('polygon', 'regular', 'ellipse') && (
-        <Section title={s.areaTitle}>
-          <Pick c={c} k="areaLabel" label={s.areaLabel} options={modes} />
-          {one && (one.kind === 'polygon' || one.kind === 'regular' || one.kind === 'ellipse') && p.areaLabel === 'custom' && <DecoText s={s} o={one} onDeco={onDeco} />}
-          {has('ellipse') && !has('circle') && <Pick c={c} k="centerMark" label={s.centerMark} options={onOff} />}
-        </Section>
-      )}
-
-      {(isPoint || doc) && (
-        <Section title={s.points}>
-          <Pick c={c} k="pointLabel" label={s.showName} options={onOff} />
-          {one && isPoint && (
-            <label className="gp__row">
-              <span className="gp__label">{s.name}</span>
-              <CommitInput value={one.name} onCommit={(t) => t.trim() && onRename(one.id, t.trim())} />
-            </label>
-          )}
-        </Section>
-      )}
-
-      <Section title={s.textStyle}>
-        <Num c={c} k="fontSize" label={s.fontSize} step={0.02} min={0.12} max={1.5} />
-        <Pick c={c} k="italic" label={s.italic} options={onOff} />
-      </Section>
-
-      <Section title={s.quick}>
-        <div className="gp__buttons">
-          <button type="button" className="btn btn--small" onClick={() => onQuick('lengths')}>
-            {s.showLengths}
-          </button>
-          <button type="button" className="btn btn--small" onClick={() => onQuick('angles')}>
-            {s.showAngles}
-          </button>
-          <button type="button" className="btn btn--small" onClick={() => onQuick('hide')}>
-            {s.hideLabels}
-          </button>
-          <button type="button" className="btn btn--small btn--quiet" onClick={() => onQuick('reset')}>
-            {s.resetLabels}
-          </button>
-        </div>
-      </Section>
-
-      <Presets s={s} presets={presets} doc={doc} onApply={onApplyPreset} onSave={onSavePreset} onDelete={onDeletePreset} />
+      <p className="gp__head">{!selected.length ? s.docTitle : one ? `${one.name} · ${s.kinds[one.kind]}` : s.selectedCount(selected.length)}</p>
+      {body}
     </div>
   );
 }
 
-interface Ctx {
-  get: (k: Key) => string;
-  set: (k: Key, raw: string) => void;
-  doc: boolean;
-  defaults: GeoProps;
-  s: GeoStrings;
-}
-
-function Pick({ c, k, label, options }: { c: Ctx; k: Key; label: string; options: [string, string][] }) {
-  const v = c.get(k);
-  return (
-    <label className="gp__row">
-      <span className="gp__label">{label}</span>
-      <select className="input gp__input" value={v} onChange={(e) => c.set(k, e.target.value)}>
-        {v === MIXED && <option value={MIXED}>{c.s.mixed}</option>}
-        {!c.doc && <option value={DEFAULT}>{`${c.s.default} (${optionText(options, String(c.defaults[k]))})`}</option>}
-        {options.map(([val, text]) => (
-          <option key={val} value={val}>
-            {text}
-          </option>
-        ))}
-      </select>
-    </label>
-  );
-}
-
-function Num({ c, k, label, step, min, max }: { c: Ctx; k: Key; label: string; step: number; min: number; max: number }) {
-  const v = c.get(k);
-  return (
-    <label className="gp__row">
-      <span className="gp__label">{label}</span>
-      <span className="gp__num">
-        <CommitInput
-          type="number"
-          step={step}
-          min={min}
-          max={max}
-          value={v === DEFAULT ? String(c.defaults[k]) : v === MIXED ? '' : v}
-          placeholder={v === MIXED ? c.s.mixed : undefined}
-          onCommit={(t) => t !== '' && Number.isFinite(Number(t)) && c.set(k, String(Math.min(max, Math.max(min, Number(t)))))}
-        />
-        {!c.doc && v !== DEFAULT && (
-          <button type="button" className="btn btn--small btn--quiet" onClick={() => c.set(k, DEFAULT)}>
-            {c.s.default}
-          </button>
-        )}
-      </span>
-    </label>
-  );
-}
-
-function optionText(options: [string, string][], v: string) {
-  return options.find(([k]) => k === v)?.[1] ?? v;
+/** the settings every selected object sets the same way */
+function sharedOwn(list: GeoObject[]): Partial<GeoProps> {
+  const first = list[0]?.props ?? {};
+  const out: Partial<GeoProps> = {};
+  for (const k of Object.keys(first) as (keyof GeoProps)[]) if (list.every((o) => o.props?.[k] === first[k])) (out as Record<string, unknown>)[k] = first[k];
+  return out;
 }
 
 function Section({ title, children }: { title: string; children: ReactNode }) {
@@ -271,191 +237,173 @@ function CommitInput({ value, onCommit, ...rest }: { value: string; onCommit: (v
   useEffect(() => setDraft(value), [value]);
   return (
     <input
-      className="input gp__input"
       {...rest}
       value={draft}
       onChange={(e) => setDraft(e.target.value)}
       onBlur={() => draft !== value && onCommit(draft)}
       onKeyDown={(e) => {
         if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
+        if (e.key === 'Escape') {
+          setDraft(value);
+          (e.target as HTMLInputElement).blur();
+        }
         e.stopPropagation();
       }}
     />
   );
 }
 
-function DecoText({ s, o, onDeco }: { s: GeoStrings; o: GeoObject; onDeco: (id: string, change: (d: Deco) => Deco) => void }) {
+/** a number typed as math: 5, 2.5, √13, 2√3, sqrt(2)*3 */
+export function readLength(text: string): number | null {
+  const src = text
+    .trim()
+    .replace(/√\s*\(([^()]*)\)/g, 'sqrt($1)')
+    .replace(/√\s*([0-9.]+)/g, 'sqrt($1)')
+    .replace(/(\d)\s*sqrt/g, '$1*sqrt')
+    .replace(/×/g, '*')
+    .replace(/π/g, 'pi');
+  if (!src) return null;
+  try {
+    const st = parse(src);
+    if (st.kind !== 'expr') return null;
+    const v = evaluate(st.expr, EMPTY_ENV, DEFAULT_SETTINGS);
+    return v.kind === 'num' && v.z.isReal() && v.z.re > 0 && Number.isFinite(v.z.re) ? v.z.re : null;
+  } catch {
+    return null;
+  }
+}
+
+/** one side, angle or radius: shown or hidden, its value (editable for a length), its label, its equal-length mark */
+function Row({
+  s,
+  title,
+  shown,
+  onShown,
+  value,
+  length,
+  label,
+  onLabel,
+  ticks,
+  onTicks,
+}: {
+  s: GeoStrings;
+  title: string;
+  shown: boolean;
+  onShown: (v: boolean) => void;
+  value: { text: string; approx: boolean };
+  length?: { now: number; set: (l: number) => void } | null;
+  label: string;
+  onLabel: (t: string) => void;
+  ticks?: number;
+  onTicks?: (t: number) => void;
+}) {
   return (
-    <label className="gp__row">
-      <span className="gp__label">{s.customText}</span>
-      <CommitInput value={o.deco?.text ?? ''} placeholder={s.customHint} onCommit={(t) => onDeco(o.id, (d) => ({ ...d, text: t }))} />
+    <div className={`gp__item${shown ? '' : ' is-hidden'}`}>
+      <button type="button" className="gp__eye" aria-pressed={shown} aria-label={shown ? s.hideLabel(title) : s.showLabel(title)} title={shown ? s.hideLabel(title) : s.showLabel(title)} onClick={() => onShown(!shown)}>
+        <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
+          {shown ? (
+            <>
+              <path d="M1.5 8s2.4-4.5 6.5-4.5S14.5 8 14.5 8 12.1 12.5 8 12.5 1.5 8 1.5 8z" stroke="currentColor" strokeWidth="1.3" fill="none" />
+              <circle cx="8" cy="8" r="2" fill="currentColor" />
+            </>
+          ) : (
+            <>
+              <path d="M1.5 8s2.4-4.5 6.5-4.5S14.5 8 14.5 8 12.1 12.5 8 12.5 1.5 8 1.5 8z" stroke="currentColor" strokeWidth="1.3" fill="none" />
+              <path d="M2.5 13.5l11-11" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
+            </>
+          )}
+        </svg>
+      </button>
+      <span className="gp__item-name">{title}</span>
+      {length ? (
+        <CommitInput
+          className="input gp__value"
+          aria-label={`${title} ${s.lengthField}`}
+          title={value.approx ? s.approxNote : undefined}
+          value={value.text}
+          onCommit={(t) => {
+            const l = readLength(t);
+            if (l && Math.abs(l - length.now) > 1e-12) length.set(l);
+          }}
+        />
+      ) : (
+        <span className="gp__value gp__value--fixed" title={value.approx ? s.approxNote : undefined}>
+          {value.text}
+        </span>
+      )}
+      <CommitInput className="input gp__tag" aria-label={`${title} ${s.labelField}`} placeholder={s.labelPlaceholder} value={label} onCommit={(t) => onLabel(t.trim())} />
+      {onTicks ? (
+        <button type="button" className="gp__ticks" aria-label={s.ticksCycle(title)} title={s.ticksCycle(title)} onClick={() => onTicks(((ticks ?? 0) + 1) % 4)}>
+          {['–', '|', '||', '|||'][ticks ?? 0]}
+        </button>
+      ) : (
+        <span className="gp__ticks gp__ticks--empty" aria-hidden="true" />
+      )}
+    </div>
+  );
+}
+
+function Toggle({ label, on, onChange }: { label: string; on: boolean; onChange: (v: boolean) => void }) {
+  return (
+    <label className="gp__toggle">
+      <input type="checkbox" checked={on} onChange={(e) => onChange(e.target.checked)} />
+      {label}
     </label>
   );
 }
 
-/** the object's numbers in the chosen format, with ≈ when there is no exact form */
-function Measures({ s, o, shape, p }: { s: GeoStrings; o: GeoObject; shape: Shape; p: GeoProps }) {
-  const ms = Object.entries(measuresOf(o, shape));
-  if (!ms.length) return null;
+/** how numbers are written: exact (√2, 4π) or decimal with its places, and the unit */
+function Notation({ s, value, own, doc, onChange }: { s: GeoStrings; value: GeoProps; own?: Partial<GeoProps>; doc?: boolean; onChange: (patch: Partial<Record<keyof GeoProps, unknown>>) => void }) {
+  const mode = !doc && own?.format === undefined ? 'doc' : value.format === 'decimal' ? 'decimal' : 'exact';
+  const known = ['', 'cm', 'm'].includes(value.unit);
+  const [custom, setCustom] = useState(!known);
   return (
-    <dl className="gp__measures">
-      {ms.map(([name, m]) => {
-        const f = formatMeasure(m, p);
-        return (
-          <div key={name} className="gp__measure">
-            <dt>{s.measure[name] ?? name}</dt>
-            <dd>
-              {f.text}
-              {f.approx && (
-                <span className="gp__approx" title={s.approxNote}>
-                  {' '}≈
-                </span>
-              )}
-            </dd>
-          </div>
-        );
-      })}
-    </dl>
-  );
-}
-
-/** each side and corner of one polygon: its own label, text and marks */
-function Parts({ s, o, objects, count, onDeco }: { s: GeoStrings; o: GeoObject; objects: GeoObject[]; count: number; onDeco: (id: string, change: (d: Deco) => Deco) => void }) {
-  const byId = new Map(objects.map((x) => [x.id, x]));
-  const ids =
-    o.kind === 'polygon'
-      ? o.pts
-      : o.kind === 'regular'
-        ? [o.a, o.b, ...objects.filter((v) => v.kind === 'vertex' && v.poly === o.id).sort((x, y) => (x as { k: number }).k - (y as { k: number }).k).map((v) => v.id)]
-        : [];
-  const nameOf = (k: number) => byId.get(ids[k % count] ?? '')?.name ?? String(k + 1);
-  const patch = (which: 'sides' | 'corners', k: number, change: Partial<LabelPart>) =>
-    onDeco(o.id, (d) => {
-      const list = [...(d[which] ?? [])];
-      while (list.length < count) list.push({});
-      const next = { ...list[k], ...change };
-      for (const key of Object.keys(next) as (keyof LabelPart)[]) if (next[key] === undefined) delete next[key];
-      list[k] = next;
-      return { ...d, [which]: list };
-    });
-  const modeOptions = (
-    <>
-      <option value="">{s.default}</option>
-      {['hidden', 'value', 'custom'].map((m) => (
-        <option key={m} value={m}>
-          {s.labelModes[m]}
-        </option>
-      ))}
-    </>
-  );
-  const sides = o.deco?.sides ?? [];
-  const corners = o.deco?.corners ?? [];
-  return (
-    <>
-      <Section title={s.sideList}>
-        {Array.from({ length: count }, (_, k) => {
-          const part = sides[k] ?? {};
-          return (
-            <div key={k} className="gp__part">
-              <span className="gp__part-name">
-                {nameOf(k)}
-                {nameOf(k + 1)}
-              </span>
-              <select className="input gp__input" aria-label={`${s.label} ${nameOf(k)}${nameOf(k + 1)}`} value={part.label ?? ''} onChange={(e) => patch('sides', k, { label: (e.target.value || undefined) as LabelPart['label'] })}>
-                {modeOptions}
-              </select>
-              <select className="input gp__input gp__input--short" aria-label={`${s.ticks} ${nameOf(k)}${nameOf(k + 1)}`} value={part.ticks ?? ''} onChange={(e) => patch('sides', k, { ticks: e.target.value === '' ? undefined : Number(e.target.value) })}>
-                <option value="">{s.ticks}</option>
-                {s.tickOptions.map((t, j) => (
-                  <option key={j} value={j}>
-                    {t}
-                  </option>
-                ))}
-              </select>
-              <select className="input gp__input gp__input--short" aria-label={`${s.arrows} ${nameOf(k)}${nameOf(k + 1)}`} value={part.arrows ?? ''} onChange={(e) => patch('sides', k, { arrows: e.target.value === '' ? undefined : Number(e.target.value) })}>
-                <option value="">{s.arrows}</option>
-                {s.arrowOptions.map((t, j) => (
-                  <option key={j} value={j}>
-                    {t}
-                  </option>
-                ))}
-              </select>
-              {part.label === 'custom' && <CommitInput aria-label={`${s.customText} ${nameOf(k)}${nameOf(k + 1)}`} value={part.text ?? ''} placeholder={s.customHint} onCommit={(t) => patch('sides', k, { text: t })} />}
-            </div>
-          );
-        })}
-      </Section>
-      <Section title={s.corners}>
-        {Array.from({ length: count }, (_, k) => {
-          const part = corners[k] ?? {};
-          return (
-            <div key={k} className="gp__part">
-              <span className="gp__part-name">∠{nameOf(k)}</span>
-              <select className="input gp__input" aria-label={`${s.angleLabel} ${nameOf(k)}`} value={part.label ?? ''} onChange={(e) => patch('corners', k, { label: (e.target.value || undefined) as LabelPart['label'] })}>
-                {modeOptions}
-              </select>
-              <select className="input gp__input gp__input--short" aria-label={`${s.arcs} ${nameOf(k)}`} value={part.arcs ?? ''} onChange={(e) => patch('corners', k, { arcs: e.target.value === '' ? undefined : Number(e.target.value) })}>
-                <option value="">{s.arcs}</option>
-                {s.arcOptions.map((t, j) => (
-                  <option key={j} value={j + 1}>
-                    {t}
-                  </option>
-                ))}
-              </select>
-              {part.label === 'custom' && <CommitInput aria-label={`${s.customText} ∠${nameOf(k)}`} value={part.text ?? ''} placeholder={s.customHint} onCommit={(t) => patch('corners', k, { text: t })} />}
-            </div>
-          );
-        })}
-      </Section>
-    </>
-  );
-}
-
-function Presets({ s, presets, doc, onApply, onSave, onDelete }: { s: GeoStrings; presets: Preset[]; doc: boolean; onApply: (p: Preset, asDefault: boolean) => void; onSave: (name: string) => void; onDelete: (id: string) => void }) {
-  const [name, setName] = useState('');
-  const list = [...BUILT_IN_PRESETS, ...presets];
-  return (
-    <Section title={s.presets}>
-      <ul className="gp__presets">
-        {list.map((p) => {
-          const label = p.name ?? s.presetNames[p.id] ?? p.id;
-          return (
-            <li key={p.id} className="gp__preset">
-              <span className="gp__preset-name">{label}</span>
-              {!doc && (
-                <button type="button" className="btn btn--small" onClick={() => onApply(p, false)}>
-                  {s.applyPreset}
-                </button>
-              )}
-              <button type="button" className="btn btn--small btn--quiet" onClick={() => onApply(p, true)}>
-                {s.setAsDefault}
-              </button>
-              {p.name && (
-                <button type="button" className="icon-btn icon-btn--small" aria-label={s.deletePreset(label)} title={s.deletePreset(label)} onClick={() => onDelete(p.id)}>
-                  <svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true">
-                    <path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" strokeWidth="1.5" fill="none" />
-                  </svg>
-                </button>
-              )}
-            </li>
-          );
-        })}
-      </ul>
-      <form
-        className="gp__save"
-        onSubmit={(e) => {
-          e.preventDefault();
-          if (name.trim()) {
-            onSave(name.trim());
-            setName('');
-          }
-        }}
-      >
-        <input className="input gp__input" aria-label={s.presetName} placeholder={s.presetName} value={name} onChange={(e) => setName(e.target.value)} onKeyDown={(e) => e.stopPropagation()} />
-        <button type="submit" className="btn btn--small" disabled={!name.trim()}>
-          {s.savePreset}
+    <Section title={s.notation}>
+      <div className="segmented gp__seg" role="group" aria-label={s.notation}>
+        {!doc && (
+          <button type="button" aria-pressed={mode === 'doc'} onClick={() => onChange({ format: undefined, decimals: undefined, unit: undefined })}>
+            {s.notationDoc}
+          </button>
+        )}
+        <button type="button" aria-pressed={mode === 'exact'} onClick={() => onChange({ format: 'auto' })}>
+          {s.notationExact}
         </button>
-      </form>
+        <button type="button" aria-pressed={mode === 'decimal'} onClick={() => onChange({ format: 'decimal' })}>
+          {s.notationDecimal}
+        </button>
+      </div>
+      <div className="gp__line">
+        {value.format === 'decimal' && (
+          <label className="gp__mini">
+            {s.places}
+            <select className="input" value={value.decimals} onChange={(e) => onChange({ decimals: Number(e.target.value) })}>
+              {[0, 1, 2, 3, 4].map((d) => (
+                <option key={d} value={d}>
+                  {d}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
+        <select
+          className="input gp__unit"
+          aria-label={s.unit}
+          value={custom ? 'custom' : value.unit}
+          onChange={(e) => {
+            const v = e.target.value;
+            setCustom(v === 'custom');
+            if (v !== 'custom') onChange({ unit: v });
+          }}
+        >
+          <option value="">{s.unitNone}</option>
+          <option value="cm">cm</option>
+          <option value="m">m</option>
+          <option value="custom">{s.unitCustom}</option>
+        </select>
+        {custom && <CommitInput className="input gp__unit" aria-label={s.customUnit} value={known ? '' : value.unit} onCommit={(t) => onChange({ unit: t.trim() })} />}
+      </div>
     </Section>
   );
 }
+
+export type { Pt };

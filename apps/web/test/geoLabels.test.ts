@@ -149,3 +149,14 @@ describe('editing keeps dependencies', () => {
     expect(m.type === 'point' && m.at).toEqual({ x: 3, y: 1 });
   });
 });
+
+describe('exact values stay honest', () => {
+  it('a length that is only close to a fraction stays a decimal', () => {
+    // C moved along a side to length 5 from B: the far side CA is irrational
+    const u = { x: -2 / Math.sqrt(20), y: 4 / Math.sqrt(20) };
+    const C = { x: 4 + 5 * u.x, y: -1 + 5 * u.y };
+    const m = lengthMeasure(C, { x: 0, y: -1 });
+    expect(formatMeasure(m, BASE_PROPS).approx).toBe(true);
+    expect(formatMeasure(lengthMeasure({ x: 4, y: -1 }, C), BASE_PROPS).text).toBe('5');
+  });
+});

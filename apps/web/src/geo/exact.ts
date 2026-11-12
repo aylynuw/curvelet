@@ -20,18 +20,22 @@ const gcd = (x: number, y: number): number => {
   return x;
 };
 
-/** the fraction n/d (d ≤ 10000) equal to x, or null */
+/**
+ * the fraction n/d (d ≤ 1000) equal to x, or null. The match must be very close: values worked out
+ * from grid points are exact to about 1e-15, while an irrational length lands near some fraction
+ * with a big denominator by chance.
+ */
 export function rational(x: number): { n: number; d: number } | null {
   if (!Number.isFinite(x)) return null;
-  if (Math.abs(x - Math.round(x)) < 1e-9) return { n: Math.round(x), d: 1 };
+  if (Math.abs(x - Math.round(x)) < 1e-11 * Math.max(1, Math.abs(x))) return { n: Math.round(x), d: 1 };
   let [h0, h1, k0, k1] = [0, 1, 1, 0];
   let v = x;
   for (let i = 0; i < 24; i++) {
     const a = Math.floor(v);
     [h0, h1] = [h1, a * h1 + h0];
     [k0, k1] = [k1, a * k1 + k0];
-    if (k1 > 10000) return null;
-    if (Math.abs(h1 / k1 - x) < 1e-9 * Math.max(1, Math.abs(x))) return { n: h1, d: k1 };
+    if (k1 > 1000) return null;
+    if (Math.abs(h1 / k1 - x) < 1e-11 * Math.max(1, Math.abs(x))) return { n: h1, d: k1 };
     v = 1 / (v - a);
     if (!Number.isFinite(v)) break;
   }

@@ -5,7 +5,7 @@
  * diameter, point names. The canvas and every export draw the same list.
  */
 import { exactRational, exactSqrt, formatMeasure, mathText, scale, type Measure } from './exact';
-import type { GeoObject, LabelPart, Pt, Shape } from './model';
+import { cornerIds, type GeoObject, type LabelPart, type Pt, type Shape } from './model';
 import { propsOf, type GeoProps, type LabelMode } from './props';
 
 export interface DecoText {
@@ -212,7 +212,7 @@ export function decorate(objects: GeoObject[], shapes: Map<string, Shape>, defau
   for (const o of objects) {
     const s = shapes.get(o.id);
     if (s?.type !== 'polygon') continue;
-    const ids = o.kind === 'polygon' ? o.pts : o.kind === 'regular' ? [o.a, o.b, ...objects.filter((v) => v.kind === 'vertex' && v.poly === o.id).sort((x, y) => (x as { k: number }).k - (y as { k: number }).k).map((v) => v.id)] : [];
+    const ids = cornerIds(o, objects);
     const cen = mul(s.pts.reduce((t, q) => add(t, q), { x: 0, y: 0 }), 1 / s.pts.length);
     ids.forEach((id, k) => {
       const q = s.pts[k];
