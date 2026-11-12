@@ -4,6 +4,8 @@
  */
 export interface Picture {
   src: string;
+  /** the file's name */
+  name?: string;
   /** natural size in pixels, after scaling down */
   w: number;
   h: number;
@@ -23,7 +25,7 @@ export async function readPicture(file: File): Promise<Picture | null> {
     const h = Math.max(1, Math.round(img.naturalHeight * k));
     // SVGs and small pictures go in as they are
     if (file.type === 'image/svg+xml' || (k === 1 && file.size < 400_000)) {
-      return { src: await asDataUrl(file), w, h };
+      return { src: await asDataUrl(file), w, h, name: file.name };
     }
     const canvas = document.createElement('canvas');
     canvas.width = w;
@@ -31,7 +33,7 @@ export async function readPicture(file: File): Promise<Picture | null> {
     canvas.getContext('2d')!.drawImage(img, 0, 0, w, h);
     // photos as JPEG; anything that may be see-through stays PNG
     const jpeg = file.type === 'image/jpeg';
-    return { src: canvas.toDataURL(jpeg ? 'image/jpeg' : 'image/png', 0.88), w, h };
+    return { src: canvas.toDataURL(jpeg ? 'image/jpeg' : 'image/png', 0.88), w, h, name: file.name };
   } catch {
     return null;
   } finally {

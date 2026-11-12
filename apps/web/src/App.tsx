@@ -19,6 +19,9 @@ import { ProjectsView, type SaveStatus } from './files/ProjectsView';
 import { freeName, getProject, listProjects, projectFile, projectFileName, putProject, readProjectFile, downloadText, type Project, type ProjectData, type ProjectTool } from './files/projects';
 import { EDIT_EVENT, GEO_KEY, PICTURES_KEY } from './files/keys';
 import { geoThumb, graphThumb } from './files/thumb';
+import { loadPictures, savePictures, type GraphPicture } from './graph/pictures';
+import { pickPicture, type Picture } from './pictures';
+import { PictureRow } from './components/PictureRow';
 import { FILES } from './files/strings';
 import { LEARN } from './learn/strings';
 import { TEACH } from './teach/strings';
@@ -473,6 +476,30 @@ export function App() {
     }
   };
   const [saveStatus, setSaveStatus] = useState<SaveStatus>(projectId ? 'saved' : 'unsaved');
+  // the graph's images: drawn by the graph, listed and edited with the lines
+  const [pictures, setPictures] = useState<GraphPicture[]>(loadPictures);
+  const [picSel, setPicSel] = useState<string | null>(null);
+  const placePicture = useRef<((pic: Picture) => void) | null>(null);
+  useEffect(() => savePictures(pictures), [pictures]);
+  const patchPicture = (id: string, patch: Partial<GraphPicture>) => setPictures((ps) => ps.map((p) => (p.id === id ? { ...p, ...patch } : p)));
+  const addPicture = async () => {
+    const pic = await pickPicture();
+    if (!pic) return;
+    if (placePicture.current) return placePicture.current(pic);
+    const id = newId();
+    setPictures((ps) => [...ps, { id, src: pic.src, name: pic.name, cx: 0, cy: 0, w: 10, h: Number(((10 * pic.h) / pic.w).toPrecision(4)), angle: 0, opacity: 1 }]);
+    setPicSel(id);
+  };
+  const replacePicture = async (id: string) => {
+    const pic = await pickPicture();
+    if (!pic) return;
+    // the width stays; the height follows the new picture's shape
+    setPictures((ps) => ps.map((p) => (p.id === id ? { ...p, src: pic.src, name: pic.name, h: Number(((p.w * pic.h) / pic.w).toPrecision(4)) } : p)));
+  };
+  // a picture picked on the graph shows its row
+  useEffect(() => {
+    if (picSel) document.querySelector(`[data-pic="${picSel}"]`)?.scrollIntoView({ block: 'nearest' });
+  }, [picSel]);
   const [projectsVersion, setProjectsVersion] = useState(0);
   /** bumps to remount the graph and the board after a project opens */
   const [docRev, setDocRev] = useState(0);
@@ -487,12 +514,11 @@ export function App() {
         return null;
       }
     };
-    const pictures = read(PICTURES_KEY);
     return {
       name: docName,
       lines: linesRef.current.filter(hasContent).map(lineData),
       geo: read(GEO_KEY),
-      pictures: Array.isArray(pictures) ? pictures : [],
+      pictures,
       figure: { grid: figure.grid, piTicks: figure.piTicks, pointLabels: figure.pointLabels, axes: figure.axes },
       settings,
       sheet,
@@ -548,6 +574,8 @@ export function App() {
     }));
     if (p.settings) changeSettings(p.settings);
     setSheet(p.sheet ? { ...defaultWorksheet(lang), ...(p.sheet as Partial<Worksheet>) } : defaultWorksheet(lang));
+    setPictures((p.pictures ?? []) as GraphPicture[]);
+    setPicSel(null);
     setDocName(p.name);
     setProjectId(id);
     setSaveStatus(id ? 'saved' : 'unsaved');
@@ -605,7 +633,7 @@ export function App() {
       return;
     }
     markRef.current();
-  }, [lines, figure.grid, figure.piTicks, figure.pointLabels, figure.axes, settings, sheet, docName]);
+  }, [lines, figure.grid, figure.piTicks, figure.pointLabels, figure.axes, settings, sheet, docName, pictures]);
   // ⌘S / Ctrl+S saves the project, wherever the focus is
   useEffect(() => {
     const onKey = (e: globalThis.KeyboardEvent) => {
@@ -1005,7 +1033,7 @@ export function App() {
           onName={setDocName}
           status={saveStatus}
           version={projectsVersion}
-          hasContent={linesRef.current.some(hasContent) || Boolean(localStorage.getItem(PICTURES_KEY)?.length && localStorage.getItem(PICTURES_KEY) !== '[]')}
+          hasContent={linesRef.current.some(hasContent) || pictures.length > 0}
           onNew={() => void newProject()}
           onSave={() => void saveProject().then((p) => p && setNotice({ text: fls.savedAs(p.name) }))}
           onSaveCopy={() => void saveProject(true).then((p) => p && setNotice({ text: fls.copied(p.name) }))}
@@ -1127,6 +1155,7 @@ export function App() {
                 { key: 'table', label: t.newTable, note: t.newTableLabel, run: addTable },
                 { key: 'note', label: t.newNote, run: () => appendKind({ source: '', note: '' }, '[data-note]') },
                 { key: 'folder', label: t.newFolder, run: () => appendKind({ source: '', folder: { title: '' } }, '[data-folder]') },
+                { key: 'image', label: t.newPicture, note: t.newPictureLabel, run: () => void addPicture() },
               ]}
             />
             <div className="panel__history" role="group" aria-label={t.editHistory}>
@@ -1228,6 +1257,28 @@ export function App() {
               ),
             )}
           </ol>
+          {pictures.length > 0 && (
+            <ol className="lines" aria-label={t.picture}>
+              {pictures.map((pic) => (
+                <PictureRow
+                  key={pic.id}
+                  pic={pic}
+                  t={t}
+                  degrees={settings.angle === 'deg'}
+                  selected={pic.id === picSel}
+                  onSelect={() => {
+                    if (picSel !== pic.id) setPicSel(pic.id);
+                  }}
+                  onChange={(patch) => patchPicture(pic.id, patch)}
+                  onReplace={() => void replacePicture(pic.id)}
+                  onDelete={() => {
+                    setPictures((ps) => ps.filter((p) => p.id !== pic.id));
+                    if (picSel === pic.id) setPicSel(null);
+                  }}
+                />
+              ))}
+            </ol>
+          )}
           <WordsInput s={fs} onAdd={insertAtEnd} />
           <div className="ink-toggle">
             <button type="button" className="btn btn--small btn--link" aria-expanded={inkOpen} onClick={() => setInkOpen((v) => !v)}>
@@ -1263,6 +1314,11 @@ export function App() {
         <section className="stage-area" aria-label={t.graph}>
           <GraphPanel
             key={docRev}
+            pictures={pictures}
+            setPictures={setPictures}
+            picSel={picSel}
+            onPicSel={setPicSel}
+            placeRef={placePicture}
             graphables={graphables}
             seriesOf={seriesOf}
             look={lookOf}

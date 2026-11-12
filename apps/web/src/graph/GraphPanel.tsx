@@ -31,7 +31,7 @@ import { exportPdf, exportPng, exportSvg, exportTikz, graphSvg, readTheme } from
 import { exportGif, exportVideo, videoType, type Sweep } from './animate';
 import { MathText } from '../components/MathText';
 import { Menu, type MenuItem } from './Menu';
-import { PICTURES_KEY, notifyEdit } from '../files/keys';
+import { fromLocal, nice, toLocal, type GraphPicture } from './pictures';
 import { decodedImage, pickPicture, pictureFile, readPicture, type Picture } from '../pictures';
 import { GraphSettings } from './GraphSettings';
 import { fitRange } from './fit';
@@ -64,26 +64,7 @@ const GRAPH_EXAMPLES = ['y = x^2 - 2x', 'x^2 + y^2 = 9', 'r = 1 + cos(θ)', '(co
 /** A movement smaller than this between press and release is a click, not a drag. */
 const CLICK_SLOP = 4;
 
-/** an image on the plane: centre, size in plane units, opacity 0 to 1 */
-export interface GraphPicture {
-  id: string;
-  src: string;
-  cx: number;
-  cy: number;
-  w: number;
-  h: number;
-  opacity: number;
-}
-const loadPictures = (): GraphPicture[] => {
-  try {
-    const v = JSON.parse(localStorage.getItem(PICTURES_KEY) ?? '[]');
-    return Array.isArray(v) ? v : [];
-  } catch {
-    return [];
-  }
-};
 type Corner = 'nw' | 'ne' | 'se' | 'sw';
-const nice = (v: number) => Number(v.toPrecision(4));
 
 const at = (p: Poi) => `(${coordinate(p.x)}, ${coordinate(p.y)})`;
 
@@ -109,6 +90,11 @@ export function GraphPanel({
   onTemplate,
   onAddFigure,
   fit,
+  pictures,
+  setPictures,
+  picSel,
+  onPicSel,
+  placeRef,
 }: {
   graphables: Graphable[];
   seriesOf: (id: string) => number;
@@ -141,6 +127,13 @@ export function GraphPanel({
   onAddFigure: (f: { range: Range; axes: boolean; axisNumbers: boolean; curveLabels: boolean }) => void;
   /** show this part of the plane (a template's range); a new nonce asks again */
   fit: { range: Range; nonce: number } | null;
+  /** the graph's images; the expression list shows and edits them too */
+  pictures: GraphPicture[];
+  setPictures: React.Dispatch<React.SetStateAction<GraphPicture[]>>;
+  picSel: string | null;
+  onPicSel: (id: string | null) => void;
+  /** set to a function that places a picture in the middle of the view */
+  placeRef: React.MutableRefObject<((pic: Picture) => void) | null>;
 }) {
   const wrapRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -227,23 +220,11 @@ export function GraphPanel({
   }, [fit, fitDone, size]);
   // zoom box: Shift+drag, or drag after pressing the zoom-box button
   const [boxMode, setBoxMode] = useState(false);
-  // pictures under the curves, like Desmos images: one selected at a time
-  const [pictures, setPictures] = useState<GraphPicture[]>(loadPictures);
-  const [picSel, setPicSel] = useState<string | null>(null);
-  const [picRatio, setPicRatio] = useState(true);
+  // pictures under the curves, like Desmos images; the list keeps them, one selected at a time
   const [picsReady, picLoaded] = useReducer((n: number) => n + 1, 0);
-  const picDrag = useRef<{ id: string; mode: 'move' | Corner; start: [number, number]; orig: GraphPicture } | null>(null);
-  const firstPictures = useRef(true);
-  useEffect(() => {
-    try {
-      localStorage.setItem(PICTURES_KEY, JSON.stringify(pictures));
-    } catch {
-      // too big to keep: it stays for this visit
-    }
-    if (firstPictures.current) firstPictures.current = false;
-    else notifyEdit();
-  }, [pictures]);
+  const picDrag = useRef<{ id: string; mode: 'move' | 'rot' | Corner; start: [number, number]; orig: GraphPicture } | null>(null);
   const picture = pictures.find((p) => p.id === picSel) ?? null;
+  const setPicSel = onPicSel;
   const patchPicture = (id: string, patch: Partial<GraphPicture>) => setPictures((ps) => ps.map((p) => (p.id === id ? { ...p, ...patch } : p)));
   const placePicture = (pic: Picture, at?: [number, number]) => {
     const vw = (size.width || 800) / view.scale;
@@ -251,10 +232,11 @@ export function GraphPanel({
     const aspect = pic.w / pic.h;
     const w = Math.min(vw * 0.6, vh * 0.6 * aspect);
     const id = Math.random().toString(36).slice(2, 10);
-    setPictures((ps) => [...ps, { id, src: pic.src, cx: nice(at?.[0] ?? view.cx), cy: nice(at?.[1] ?? view.cy), w: nice(w), h: nice(w / aspect), opacity: 1 }]);
+    setPictures((ps) => [...ps, { id, src: pic.src, name: pic.name, cx: nice(at?.[0] ?? view.cx), cy: nice(at?.[1] ?? view.cy), w: nice(w), h: nice(w / aspect), angle: 0, opacity: 1 }]);
     setPicSel(id);
     onSelect(null);
   };
+  placeRef.current = placePicture;
   const addPicture = async () => {
     const pic = await pickPicture();
     if (pic) placePicture(pic);
@@ -263,11 +245,12 @@ export function GraphPanel({
     const [x, y] = planeAt(viewport, px, py);
     for (let k = pictures.length - 1; k >= 0; k--) {
       const p = pictures[k]!;
-      if (Math.abs(x - p.cx) <= p.w / 2 && Math.abs(y - p.cy) <= p.h / 2) return p.id;
+      const [u, v] = toLocal(p, x, y);
+      if (Math.abs(u) <= p.w / 2 && Math.abs(v) <= p.h / 2) return p.id;
     }
     return null;
   };
-  const onPicDown = (e: PointerEvent<HTMLElement>, mode: 'move' | Corner) => {
+  const onPicDown = (e: PointerEvent<HTMLElement>, mode: 'move' | 'rot' | Corner) => {
     if (!picture || e.button !== 0) return;
     e.stopPropagation();
     e.currentTarget.setPointerCapture(e.pointerId);
@@ -281,19 +264,28 @@ export function GraphPanel({
     const [x, y] = planeAt(viewport, e.clientX - r.left, e.clientY - r.top);
     const o = d.orig;
     if (d.mode === 'move') return patchPicture(d.id, { cx: nice(o.cx + x - d.start[0]), cy: nice(o.cy + y - d.start[1]) });
-    // the opposite corner stays put
-    const ax = d.mode.includes('w') ? o.cx + o.w / 2 : o.cx - o.w / 2;
-    const ay = d.mode.includes('n') ? o.cy - o.h / 2 : o.cy + o.h / 2;
+    const angle = o.angle ?? 0;
+    if (d.mode === 'rot') {
+      // the handle sits straight above the centre: its direction, less a quarter turn
+      let t = Math.atan2(y - o.cy, x - o.cx) - Math.PI / 2;
+      if (e.shiftKey) t = Math.round(t / (Math.PI / 12)) * (Math.PI / 12);
+      t = Math.atan2(Math.sin(t), Math.cos(t));
+      return patchPicture(d.id, { angle: Number(t.toPrecision(6)) });
+    }
+    // in the picture's own frame the opposite corner stays put
+    const sx = d.mode.includes('w') ? -1 : 1;
+    const sy = d.mode.includes('n') ? 1 : -1;
+    const [au, av] = [(-sx * o.w) / 2, (-sy * o.h) / 2];
+    const [u, v] = toLocal(o, x, y);
     const min = 4 / view.scale;
-    let w = Math.max(min, Math.abs(x - ax));
-    let h = Math.max(min, Math.abs(y - ay));
+    let w = Math.max(min, sx * (u - au));
+    let h = Math.max(min, sy * (v - av));
     if (e.shiftKey) {
       const k = Math.max(w / o.w, h / o.h);
       [w, h] = [o.w * k, o.h * k];
     }
-    const sx = d.mode.includes('w') ? -1 : 1;
-    const sy = d.mode.includes('n') ? 1 : -1;
-    patchPicture(d.id, { w: nice(w), h: nice(h), cx: nice(ax + (sx * w) / 2), cy: nice(ay + (sy * h) / 2) });
+    const [cx, cy] = fromLocal([o.cx, o.cy], angle, au + (sx * w) / 2, av + (sy * h) / 2);
+    patchPicture(d.id, { w: nice(w), h: nice(h), cx: nice(cx), cy: nice(cy) });
   };
   const onPicUp = () => {
     picDrag.current = null;
@@ -369,7 +361,10 @@ export function GraphPanel({
         if (!img) continue;
         c.save();
         c.globalAlpha = Math.max(0, Math.min(1, p.opacity));
-        c.drawImage(img, toPx(viewport, p.cx - p.w / 2), toPy(viewport, p.cy + p.h / 2), p.w * viewport.scale, p.h * viewport.scale);
+        c.translate(toPx(viewport, p.cx), toPy(viewport, p.cy));
+        c.rotate(-(p.angle ?? 0));
+        const [w, h] = [p.w * viewport.scale, p.h * viewport.scale];
+        c.drawImage(img, -w / 2, -h / 2, w, h);
         c.restore();
       }
     });
@@ -729,7 +724,8 @@ export function GraphPanel({
         {picture && !exam && (
           <div
             className="gpic"
-            style={{ left: toPx(viewport, picture.cx - picture.w / 2), top: toPy(viewport, picture.cy + picture.h / 2), width: picture.w * viewport.scale, height: picture.h * viewport.scale }}
+            title={t.pictureHint}
+            style={{ left: toPx(viewport, picture.cx), top: toPy(viewport, picture.cy), width: picture.w * viewport.scale, height: picture.h * viewport.scale, transform: `translate(-50%, -50%) rotate(${-(picture.angle ?? 0)}rad)` }}
             onPointerDown={(e) => onPicDown(e, 'move')}
             onPointerMove={onPicMove}
             onPointerUp={onPicUp}
@@ -738,6 +734,8 @@ export function GraphPanel({
             {(['nw', 'ne', 'se', 'sw'] as const).map((c) => (
               <span key={c} className={`gpic__handle gpic__handle--${c}`} onPointerDown={(e) => onPicDown(e, c)} onPointerMove={onPicMove} onPointerUp={onPicUp} />
             ))}
+            <span className="gpic__arm" aria-hidden="true" />
+            <span className="gpic__handle gpic__handle--rot" onPointerDown={(e) => onPicDown(e, 'rot')} onPointerMove={onPicMove} onPointerUp={onPicUp} />
           </div>
         )}
         {penMode && penOverlay()}
@@ -872,65 +870,6 @@ export function GraphPanel({
         </div>
       </div>
 
-      {picture && !exam && (
-        <div className="hud hud--bottom-left">
-          <section className="info gpic-panel" aria-label={t.pictureTitle}>
-            <div className="gpic-panel__top">
-              <img className="gpic-panel__thumb" src={picture.src} alt="" />
-              <span className="info__title">{t.pictureTitle}</span>
-              <button type="button" className="btn btn--small" onClick={() => (setPictures((ps) => ps.filter((p) => p.id !== picture.id)), setPicSel(null))}>
-                {t.pictureDelete}
-              </button>
-            </div>
-            <div className="gpic-panel__grid">
-              <label>
-                <span>{t.pictureCenter} x</span>
-                <input type="number" step="any" value={picture.cx} onChange={(e) => Number.isFinite(e.target.valueAsNumber) && patchPicture(picture.id, { cx: e.target.valueAsNumber })} />
-              </label>
-              <label>
-                <span>{t.pictureCenter} y</span>
-                <input type="number" step="any" value={picture.cy} onChange={(e) => Number.isFinite(e.target.valueAsNumber) && patchPicture(picture.id, { cy: e.target.valueAsNumber })} />
-              </label>
-              <label>
-                <span>{t.pictureWidth}</span>
-                <input
-                  type="number"
-                  step="any"
-                  min="0"
-                  value={picture.w}
-                  onChange={(e) => {
-                    const w = e.target.valueAsNumber;
-                    if (Number.isFinite(w) && w > 0) patchPicture(picture.id, picRatio ? { w, h: nice((picture.h * w) / picture.w) } : { w });
-                  }}
-                />
-              </label>
-              <label>
-                <span>{t.pictureHeight}</span>
-                <input
-                  type="number"
-                  step="any"
-                  min="0"
-                  value={picture.h}
-                  onChange={(e) => {
-                    const h = e.target.valueAsNumber;
-                    if (Number.isFinite(h) && h > 0) patchPicture(picture.id, picRatio ? { h, w: nice((picture.w * h) / picture.h) } : { h });
-                  }}
-                />
-              </label>
-            </div>
-            <label className="gpic-panel__check">
-              <input type="checkbox" checked={picRatio} onChange={(e) => setPicRatio(e.target.checked)} />
-              {t.pictureRatio}
-            </label>
-            <label className="gpic-panel__range">
-              <span>{t.pictureOpacity}</span>
-              <input type="range" min="0" max="100" value={Math.round(picture.opacity * 100)} onChange={(e) => patchPicture(picture.id, { opacity: e.target.valueAsNumber / 100 })} />
-              <span className="num">{Math.round(picture.opacity * 100)}%</span>
-            </label>
-            <p className="info__hint">{t.pictureHint}</p>
-          </section>
-        </div>
-      )}
       {info && !picture && (
         <div className="hud hud--bottom-left">
           <section className="info" aria-live="polite">
