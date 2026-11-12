@@ -382,7 +382,16 @@ export function textToLatex(text: string, { display = false }: { display?: boole
         // −1/2 is −½: the sign goes in front of the bar
         const sign = !wrapped && /^-[^-+]/.test(num) ? '-' : '';
         const top = wrapped ? num.slice(1, -1) : sign ? num.slice(1) : num;
-        parts.push(`${sign}\\frac{${top}}{${operand()}}`);
+        const den = operand();
+        // shown: 3x⁴/4 reads as ¾x⁴, the number over the number and the letters after it
+        const k = parts.length;
+        // (3x⁴/4 written without the dot too, which would otherwise read as 3 and x⁴/4)
+        const dot = parts[k - 1] === '\\,' ? 1 : 0;
+        const coef = /^-?\d+$/.test(parts[k - 1 - dot] ?? '') ? parts[k - 1 - dot]! : null;
+        if (display && !sign && coef && /^\d+$/.test(den) && !/^[\d.]/.test(top)) {
+          parts.length = k - 1 - dot;
+          parts.push(`${coef.startsWith('-') ? '-' : ''}\\frac{${coef.replace('-', '')}}{${den}}${top}`);
+        } else parts.push(`${sign}\\frac{${top}}{${den}}`);
         prev = tokens[i - 1];
         continue;
       }

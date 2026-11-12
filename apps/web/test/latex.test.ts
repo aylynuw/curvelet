@@ -148,3 +148,11 @@ describe('textbook forms', () => {
     expect(latexToText('\\frac{d}{2}')).toBe('d/2');
   });
 });
+
+describe('shown results', () => {
+  it('puts a number coefficient over the bar, letters after it', () => {
+    expect(textToLatex('3*x^4/4 - 2*x^3/3 + 2*x^2', { display: true })).toBe('\\frac{3}{4}x^{4}-\\frac{2}{3}x^{3}+2\\,x^{2}');
+    expect(textToLatex('-3*x^2/2', { display: true })).toBe('-\\frac{3}{2}x^{2}');
+    expect(textToLatex('x^4/4', { display: true })).toBe('\\frac{x^{4}}{4}');
+  });
+});
