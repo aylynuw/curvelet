@@ -20,10 +20,11 @@ import { fractionsIn, useNumberForm } from '../numberForm';
 
 /** let a = 2 gets a slider: its name and value */
 export function sliderOf(source: string): { name: string; value: number; min: number; max: number } | null {
-  // let a = 2 or a = 2
-  const m = /^\s*(?:let\s+)?([\p{L}][\p{L}\p{N}_]*)\s*=\s*(-?\d+(?:\.\d+)?)\s*$/u.exec(source);
+  // let a = 2, a = 2, or a = -7/10 (a dragged point writes fractions)
+  const m = /^\s*(?:let\s+)?([\p{L}][\p{L}\p{N}_]*)\s*=\s*(-?\d+(?:\.\d+)?)(?:\s*\/\s*(\d+(?:\.\d+)?))?\s*$/u.exec(source);
   if (!m) return null;
-  const value = Number(m[2]);
+  const value = m[3] ? Number(m[2]) / Number(m[3]) : Number(m[2]);
+  if (!Number.isFinite(value)) return null;
   return { name: m[1]!, value, min: Math.min(-10, Math.floor(value)), max: Math.max(10, Math.ceil(value)) };
 }
 

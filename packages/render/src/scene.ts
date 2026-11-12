@@ -289,11 +289,14 @@ export function buildScene(graphables: Graphable[], v: Viewport, opts: SceneOpti
   const pts = graphables.filter((g) => g.kind === 'point');
   const mid = pts.length > 1 ? [pts.reduce((s, g) => s + toPx(v, g.x), 0) / pts.length, pts.reduce((s, g) => s + toPy(v, g.y), 0) / pts.length] : null;
   const fontSize = exam ? 15 : 13;
-  const box = (l: Pick<Label, 'x' | 'y' | 'anchor' | 'baseline' | 'text'>) => {
-    const w = l.text.length * fontSize * 0.55;
+  const box = (l: Pick<Label, 'x' | 'y' | 'anchor' | 'baseline' | 'text'> & { kind?: Label['kind'] }) => {
+    // a stacked fraction is two lines tall and as wide as its longer part
+    const frac = exam && l.kind ? stackedFraction({ kind: l.kind, text: l.text }) : null;
+    const w = frac ? (Math.max(frac[1].length, frac[2].length) + (frac[0] ? 1 : 0)) * fontSize * 0.55 + 4 : l.text.length * fontSize * 0.55;
+    const h = frac ? fontSize * 2 : fontSize;
     const x0 = l.anchor === 'start' ? l.x : l.anchor === 'middle' ? l.x - w / 2 : l.x - w;
-    const y0 = l.baseline === 'top' ? l.y : l.baseline === 'middle' ? l.y - fontSize / 2 : l.y - fontSize;
-    return [x0, y0, x0 + w, y0 + fontSize] as const;
+    const y0 = l.baseline === 'top' ? l.y : l.baseline === 'middle' ? l.y - h / 2 : l.y - h;
+    return [x0, y0, x0 + w, y0 + h] as const;
   };
   const hits = (a: readonly number[], b: readonly number[]) => a[0]! < b[2]! && b[0]! < a[2]! && a[1]! < b[3]! && b[1]! < a[3]!;
   /**
@@ -318,7 +321,9 @@ export function buildScene(graphables: Graphable[], v: Viewport, opts: SceneOpti
       };
       first ??= spot;
       const b = box({ ...spot, text });
-      const clear = !scene.labels.some((l) => hits(box(l), b)) && !scene.points.some((q) => hits([q.x - 3, q.y - 3, q.x + 3, q.y + 3], b));
+      // free of other labels and points, and inside the picture so it isn't cut off at an edge
+      const inside = b[0] >= 2 && b[2] <= v.width - 2 && b[1] >= 2 && b[3] <= v.height - 2;
+      const clear = inside && !scene.labels.some((l) => hits(box(l), b)) && !scene.points.some((q) => hits([q.x - 3, q.y - 3, q.x + 3, q.y + 3], b));
       if (clear) return spot;
     }
     return first!;
@@ -330,7 +335,6 @@ export function buildScene(graphables: Graphable[], v: Viewport, opts: SceneOpti
     if (px < -20 || px > v.width + 20 || py < -20 || py > v.height + 20) continue;
     scene.points.push({ id: g.id, x: px, y: py, series: 0 });
     if (exam) {
-      if (g.label) scene.labels.push({ ...away(px, py, 8, g.label), text: g.label, kind: 'point' });
       // dashed guides down/across to the axes, with the coordinates written there
       const edits = opts.guideText ?? {};
       const xRef = `${g.id}:x`;
@@ -345,6 +349,8 @@ export function buildScene(graphables: Graphable[], v: Viewport, opts: SceneOpti
         const text = edits[yRef] ?? (g.y !== 0 ? (opts.coord ?? coordinate)(g.y) : '');
         if (text) scene.labels.push({ x: axisX + (g.x >= 0 ? -6 : 6), y: py, text, kind: 'guide', anchor: g.x >= 0 ? 'end' : 'start', baseline: 'middle', ref: yRef });
       }
+      // the name last, so it keeps clear of its own numbers on the axes
+      if (g.label) scene.labels.push({ ...away(px, py, 8, g.label), text: g.label, kind: 'point' });
     } else if (opts.pointLabels !== false) {
       const c = opts.coord ?? coordinate;
       const text = `${g.label ? `${g.label} ` : ''}(${c(g.x)}, ${c(g.y)})`;
@@ -383,6 +389,8 @@ export function buildScene(graphables: Graphable[], v: Viewport, opts: SceneOpti
   }
   // printed math uses a true minus sign, not a hyphen
   if (exam) for (const l of scene.labels) l.text = l.text.replace(/-/g, '\u2212');
+  // and roots and π as signs, not names: y = sqrt(2)x → y = √2x
+  if (exam) for (const l of scene.labels) if (l.kind === 'curve') l.text = l.text.replace(/sqrt\((\d+)\)/g, '√$1').replace(/\bpi\b/g, 'π');
   // the user's styles: "3:marks" belongs to line 3
   if (opts.look) {
     const of = (id: string) => opts.look!(id.split(':')[0]!);
@@ -482,7 +490,8 @@ function angleMark(a: Pt, b: Pt, c: Pt, right: boolean, v: Viewport, r: number):
 /** an exam label that is a fraction, set as one (sign, numerator, denominator) */
 export function stackedFraction(l: Pick<Label, 'kind' | 'text'>): [string, string, string] | null {
   if (l.kind !== 'guide') return null;
-  const m = l.text.match(/^([\u2212-]?)(\d+)\/(\d+)$/);
+  const m = l.text.match(/^([\u2212-]?)(\d*[√π]?\d*)\/(\d+)$/);
+  if (m && !/\d|π/.test(m[2]!)) return null;
   return m ? [m[1] ? '\u2212' : '', m[2]!, m[3]!] : null;
 }
 

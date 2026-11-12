@@ -13,6 +13,8 @@ describe('fractions or decimals', () => {
     expect(writeNumber(2.2, 'exact')).toBe('11/5');
     expect(writeNumber(2.2, 'decimal')).toBe('2.2');
     expect(writeNumber(-3, 'exact')).toBe('-3');
-    expect(writeNumber(Math.PI, 'exact')).toBe('3.1416');
+    expect(writeNumber(Math.PI, 'exact')).toBe('pi');
+    expect(writeNumber(Math.SQRT2 / 2, 'exact')).toBe('sqrt(2)/2');
+    expect(writeNumber(Math.PI, 'decimal')).toBe('3.1416');
   });
 });

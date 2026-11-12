@@ -129,8 +129,9 @@ describe('graph entries', () => {
     ws.set('2', 'f(x) = x^2');
     ws.set('3', 'P = (a, f(a))');
     ws.set('4', 'Q = (11/5, -1/2)');
+    ws.set('5', 'U = (sqrt(2)/2, 3pi/4)');
     const drag = ws.graphables().filter((g) => g.kind === 'point').map((g) => g.kind === 'point' && g.drag === true);
-    expect(drag).toEqual([true, true]);
+    expect(drag).toEqual([true, true, true]);
     ws.movePoint('P', 2, 9, (n) => String(n));
     expect(ws.source('1')).toBe('let a = 2');
     expect(ws.graphables().find((g) => g.kind === 'point' && g.label === 'P')).toMatchObject({ x: 2, y: 4 });

@@ -1669,8 +1669,8 @@ export function GeometryTool({ s, onSendToGraph, onNumberForm }: { s: GeoStrings
     handles = (
       <g className="geo__bbox">
         <rect className="geo__bbox-frame" x={x0} y={y0} width={x1 - x0} height={y1 - y0} />
-        <line className="geo__bbox-frame" x1={(x0 + x1) / 2} y1={y0} x2={(x0 + x1) / 2} y2={y0 - 20} />
-        <circle className="geo__handle geo__handle--rot" data-handle="rot" cx={(x0 + x1) / 2} cy={y0 - 24} r={hs / 2 + 1} style={{ cursor: 'grab' }} />
+        <line className="geo__bbox-frame" x1={(x0 + x1) / 2} y1={y0} x2={(x0 + x1) / 2} y2={y0 - 32} />
+        <circle className="geo__handle geo__handle--rot" data-handle="rot" cx={(x0 + x1) / 2} cy={y0 - 36} r={hs / 2 + 1} style={{ cursor: 'grab' }} />
         {HANDLES.map((h) => (
           <rect key={h} className="geo__handle" data-handle={h} x={at[h].x - hs / 2} y={at[h].y - hs / 2} width={hs} height={hs} style={{ cursor: cursorOf[h] }} />
         ))}

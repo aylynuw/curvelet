@@ -34,7 +34,7 @@ import { MathText } from '../components/MathText';
 import { Menu, type MenuItem } from './Menu';
 import { fromLocal, nice, toLocal, type GraphPicture } from './pictures';
 import { useNumberForm } from '../numberForm';
-import { toFraction } from '../calc/fraction';
+import { exactNumber, prettyExact, toFraction } from '../calc/fraction';
 import { crossingsWith, exactCrossing, literalPoints, pointNames, primOfShape, setLiteral, shiftLiterals, type Prim } from './handles';
 import { decodedImage, pickPicture, pictureFile, readPicture, type Picture } from '../pictures';
 import { GraphSettings } from './GraphSettings';
@@ -204,7 +204,7 @@ export function GraphPanel({
     pointLabels: figure.pointLabels,
     // fractions beside points when numbers are shown exactly (11/5, not 2.2)
     guideText: figure.guides,
-    coord: numberForm === 'exact' ? (n: number) => (Number.isInteger(n) ? String(n) : (toFraction(n, 1000) ?? coordinate(n))) : undefined,
+    coord: numberForm === 'exact' ? (n: number) => (Number.isInteger(n) ? String(n) : prettyExact(toFraction(n, 1000) ?? exactNumber(n)) ?? coordinate(n)) : undefined,
   };
 
   const selectedGraph = graphables.find((g) => g.id === selected && g.kind !== 'point') ?? null;
@@ -371,6 +371,7 @@ export function GraphPanel({
     if (penMode && next !== 'pen') finishPen(false);
     setTool(next);
     setBoxMode(false);
+    setGuideSel(null);
   };
   const [pen, setPen] = useState<{ x: number; y: number; out?: { x: number; y: number } }[]>([]);
   const penDrag = useRef<{ k: number; px: number; py: number; moved: boolean } | null>(null);
@@ -432,7 +433,7 @@ export function GraphPanel({
       exam
         ? scene.labels.flatMap((l) => {
             if (!l.ref) return [];
-            const tall = /^[\u2212-]?\d+\/\d+$/.test(l.text);
+            const tall = /^[\u2212-]?\d*[√π]?\d*\/\d+$/.test(l.text);
             const h = tall ? 30 : 18;
             const w = Math.max(16, (tall ? Math.max(...l.text.replace(/^[\u2212-]/, '').split('/').map((s) => s.length)) + 1.5 : l.text.length) * 8.5);
             const x = l.anchor === 'start' ? l.x : l.anchor === 'middle' ? l.x - w / 2 : l.x - w;
@@ -777,6 +778,7 @@ export function GraphPanel({
       chooseTool(TOOL_KEYS[e.key.toLowerCase()]!);
     } else if (e.key === 'Escape') {
       if (tool !== 'select') chooseTool('select');
+      setGuideSel(null);
       setPicSel(null);
       onSelect(null);
     }
@@ -897,7 +899,8 @@ export function GraphPanel({
     );
   };
 
-  const hiddenGuides = Object.values(figure.guides ?? {}).filter((v) => v === null).length;
+  // only lengths of points still on the graph count; a deleted point's edits are left behind
+  const hiddenGuides = Object.entries(figure.guides ?? {}).filter(([ref, v]) => v === null && graphables.some((g) => g.kind === 'point' && `${g.id}:${ref.slice(-1)}` === ref)).length;
   /** the exam's lengths: pick one to delete it, double-click (or Edit) to write it another way */
   const guideOverlay = () => (
     <>
@@ -915,6 +918,7 @@ export function GraphPanel({
                 const v = e.currentTarget.value.trim();
                 setGuide(s.ref, v ? v : null);
                 setGuideEdit(null);
+                setGuideSel(null);
                 wrapRef.current?.querySelector<HTMLCanvasElement>('canvas')?.focus();
               } else if (e.key === 'Escape') {
                 setGuideEdit(null);

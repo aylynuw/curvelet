@@ -1,5 +1,5 @@
 import { createContext, useContext } from 'react';
-import { toFraction } from './calc/fraction';
+import { exactNumber, toFraction } from './calc/fraction';
 
 /**
  * How numbers are shown everywhere: exactly (fractions, roots, π) or as
@@ -41,7 +41,8 @@ export function writeNumber(v: number, form: NumberForm): string {
   const near = Math.abs(v - Math.round(v)) < 1e-9 ? Math.round(v) : v;
   if (Number.isInteger(near)) return String(Object.is(near, -0) ? 0 : near);
   if (form === 'exact') {
-    const f = toFraction(near, 1000);
+    // a fraction, a root or a multiple of π, as the line can be read back: 2sqrt(2), pi/6
+    const f = toFraction(near, 1000) ?? exactNumber(near);
     if (f) return f;
   }
   return String(Number(near.toFixed(4)));

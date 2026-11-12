@@ -2,6 +2,7 @@ import { formatComplex, formatReal, formatValue, polygonArea, type Complex, type
 import type { ReactNode } from 'react';
 import type { Strings } from '../i18n';
 import { MathText } from './MathText';
+import { exactNumber } from '../calc/fraction';
 import { fractionsIn, useNumberForm, type NumberForm } from '../numberForm';
 
 /** A figure in words, in the interface language: Triangle, area 6 / 삼각형, 넓이 6 */
@@ -137,7 +138,16 @@ function ResultViewInner({
       }
       // exact view: decimals that are fractions read as fractions, (2.2, 4.048) → (11/5, 506/125)
       const plain = formatValue(v);
-      const asFractions = form === 'exact' && literal !== 'number' && !result.numeric && (v.kind === 'num' || v.kind === 'point') ? fractionsIn(plain) : plain;
+      const exactly = form === 'exact' && literal !== 'number' && !result.numeric;
+      // roots and π too: 2.828… → 2√2, (0.707…, 0.707…) → (√2/2, √2/2)
+      const exactText = !exactly
+        ? null
+        : v.kind === 'num' && v.z.im === 0
+          ? exactNumber(v.z.re)
+          : v.kind === 'point' && (exactNumber(v.x) || exactNumber(v.y))
+            ? `(${exactNumber(v.x) ?? formatReal(v.x)}, ${exactNumber(v.y) ?? formatReal(v.y)})`
+            : null;
+      const asFractions = exactText ?? (exactly && (v.kind === 'num' || v.kind === 'point') ? fractionsIn(plain) : plain);
       // a point written as numbers: nothing to add, unless the fractions read differently
       if (literal === 'point') {
         return asFractions !== plain ? (

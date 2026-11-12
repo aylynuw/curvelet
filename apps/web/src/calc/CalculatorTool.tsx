@@ -8,7 +8,7 @@ import type { Strings } from '../i18n';
 import { textToLatex } from '../math/latex';
 import type { MathfieldElement } from '../math/mathlive';
 import { newId } from '../storage';
-import { toFraction } from './fraction';
+import { exactNumber, toFraction } from './fraction';
 import type { CalcStrings } from './strings';
 import { useNumberForm } from '../numberForm';
 
@@ -20,6 +20,8 @@ export interface TapeEntry {
   text: string;
   /** the exact form when there is one: 1/3, sqrt(2)/2 */
   exact?: string;
+  /** a formula (x = ±√2, a derivative), set as math rather than as a number */
+  math?: boolean;
 }
 type Format = 'exact' | 'decimal';
 
@@ -41,16 +43,16 @@ const store = (key: string, value: unknown) => {
 };
 
 /** what a result shows, in the chosen format; null when it isn't an answer */
-function answer(r: Result | undefined, t: Strings): { text: string; exact?: string } | null {
+function answer(r: Result | undefined, t: Strings): { text: string; exact?: string; math?: boolean } | null {
   if (!r) return null;
   if (r.status === 'value') {
     if (r.value.kind === 'num' && r.value.z.im === 0) {
-      const frac = toFraction(r.value.z.re);
+      const frac = exactNumber(r.value.z.re);
       return { text: r.text, exact: r.exact ?? frac ?? undefined };
     }
     return { text: r.text, exact: r.exact };
   }
-  if (r.status === 'symbolic' || r.status === 'solved') return { text: r.text };
+  if (r.status === 'symbolic' || r.status === 'solved') return { text: r.text, math: true };
   if (r.status === 'relation') return { text: r.holds ? t.yes : t.no };
   return null;
 }
@@ -99,14 +101,14 @@ export function CalculatorTool({
   const last = tape[tape.length - 1];
   const ws = useMemo(() => new Workspace(settings, resolver), [settings, resolver]);
   // ans is the last answer, exact when it can be
-  ws.set('ans', last ? `ans = ${last.exact && /^-?\d+\/\d+$/.test(last.exact) ? `(${last.exact})` : last.text}` : '');
+  ws.set('ans', last ? `ans = ${last.exact ? `(${last.exact})` : last.text}` : '');
   ws.set('cur', input);
   const result = input.trim() ? ws.result('cur') : undefined;
   const live = answer(result, t);
 
   const commit = () => {
     if (!live || !input.trim()) return;
-    setTape((tp) => [...tp, { id: newId(), source: input, text: live.text, ...(live.exact ? { exact: live.exact } : {}) }]);
+    setTape((tp) => [...tp, { id: newId(), source: input, text: live.text, ...(live.exact ? { exact: live.exact } : {}), ...(live.math ? { math: true } : {}) }]);
     setInput('');
   };
 
@@ -148,7 +150,7 @@ export function CalculatorTool({
                     <MathText text={e.source} />
                   </span>
                   <span className="calc__ans">
-                    {format === 'exact' && e.exact ? <MathText text={e.exact} block /> : <NumberText text={e.text} />}
+                    {format === 'exact' && e.exact ? <MathText text={e.exact} block /> : e.math ? <MathText text={e.text} block /> : <NumberText text={e.text} />}
                   </span>
                 </button>
               </li>
@@ -180,11 +182,11 @@ export function CalculatorTool({
           ) : display !== null ? (
             <span className="calc__big">
               {format === 'decimal' && live?.exact && '≈ '}
-              {format === 'exact' && live?.exact ? <MathText text={display} block /> : <NumberText text={display} />}
+              {(format === 'exact' && live?.exact) || live?.math ? <MathText text={display} block /> : <NumberText text={display} />}
             </span>
           ) : last && !input.trim() ? (
             <span className="calc__big calc__big--quiet">
-              {format === 'exact' && last.exact ? <MathText text={last.exact} block /> : <NumberText text={last.text} />}
+              {format === 'exact' && last.exact ? <MathText text={last.exact} block /> : last.math ? <MathText text={last.text} block /> : <NumberText text={last.text} />}
             </span>
           ) : null}
         </output>

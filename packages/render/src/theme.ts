@@ -103,4 +103,4 @@ export function mathRuns(text: string, sup = false): Run[] {
 }
 
 /** Which labels are set as math (italic variables) in exam figures. */
-export const isMathLabel = (l: Label) => l.kind === 'axis' || l.kind === 'curve';
+export const isMathLabel = (l: Label) => l.kind === 'axis' || l.kind === 'curve' || (l.kind === 'guide' && /\p{L}/u.test(l.text));

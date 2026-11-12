@@ -949,11 +949,13 @@ export class Workspace {
 
 // -----------------------------------------------------------------------------
 
-/** a number written out: 2, -3, 11/5, -7/10 */
+/** a number written out: 2, -3, 11/5, -7/10, sqrt(2)/2, 3pi/4 */
 function plainNumber(n: Node): boolean {
   if (n.type === 'num') return true;
+  if (n.type === 'ident') return n.name === 'pi' || n.name === 'π';
   if (n.type === 'unary') return plainNumber(n.arg);
-  if (n.type === 'binary' && n.op === '/') return plainNumber(n.left) && plainNumber(n.right);
+  if (n.type === 'call') return n.name === 'sqrt' && n.primes === 0 && n.args.length === 1 && plainNumber(n.args[0]!);
+  if (n.type === 'binary' && (n.op === '/' || n.op === '*')) return plainNumber(n.left) && plainNumber(n.right);
   return false;
 }
 
