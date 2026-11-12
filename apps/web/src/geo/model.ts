@@ -4,7 +4,33 @@
  * so moving one moves everything that depends on it.
  */
 
-export type GeoObject =
+import type { GeoProps } from './props';
+
+/** per-object label details: custom text, each side and corner of a polygon, labels dragged away from their place */
+export interface LabelPart {
+  label?: 'hidden' | 'value' | 'custom';
+  text?: string;
+  ticks?: number;
+  arrows?: number;
+  arcs?: number;
+}
+export interface Deco {
+  /** custom text for the object's main label (a segment's length, a circle's measure, an angle) */
+  text?: string;
+  /** a polygon's sides: side k runs from corner k to corner k + 1 */
+  sides?: LabelPart[];
+  /** a polygon's corners */
+  corners?: LabelPart[];
+  /** labels moved by hand, by label key, in coordinate units */
+  moved?: Record<string, Pt>;
+}
+/** what every object can carry besides its geometry: settings that override the document's, and label details */
+export interface Styled {
+  props?: Partial<GeoProps>;
+  deco?: Deco;
+}
+
+export type GeoObject = (
   | { id: string; kind: 'point'; name: string; x: number; y: number }
   | { id: string; kind: 'midpoint'; name: string; a: string; b: string }
   /** where two objects cross; `which` picks between two crossings */
@@ -27,7 +53,11 @@ export type GeoObject =
   | { id: string; kind: 'vertex'; name: string; poly: string; k: number }
   /** the angle a-vertex-c, measured */
   | { id: string; kind: 'angle'; name: string; a: string; vertex: string; c: string }
-  | { id: string; kind: 'text'; name: string; x: number; y: number; text: string };
+  | { id: string; kind: 'text'; name: string; x: number; y: number; text: string }
+  /** an ellipse around a free centre, its radii along axes turned by `rot` degrees */
+  | { id: string; kind: 'ellipse'; name: string; center: string; rx: number; ry: number; rot: number }
+) &
+  Styled;
 
 export type GeoKind = GeoObject['kind'];
 export interface Pt {
@@ -41,6 +71,7 @@ export type Shape =
   /** a, b on the line; kind decides how far it runs */
   | { type: 'line'; a: Pt; b: Pt; extent: 'segment' | 'line' | 'ray' }
   | { type: 'circle'; c: Pt; r: number }
+  | { type: 'ellipse'; c: Pt; rx: number; ry: number; rot: number }
   | { type: 'polygon'; pts: Pt[] }
   | { type: 'angle'; a: Pt; v: Pt; c: Pt; degrees: number }
   | { type: 'text'; at: Pt; text: string };
@@ -48,7 +79,7 @@ export type Shape =
 const dist = (p: Pt, q: Pt) => Math.hypot(q.x - p.x, q.y - p.y);
 
 /** crossings of two lines or circles (0, 1 or 2 points) */
-function crossings(s: Shape, t: Shape): Pt[] {
+export function crossings(s: Shape, t: Shape): Pt[] {
   const lineOf = (u: Shape) => (u.type === 'line' ? u : null);
   if (s.type === 'line' && t.type === 'line') {
     const d1 = { x: s.b.x - s.a.x, y: s.b.y - s.a.y };
@@ -169,6 +200,11 @@ export function resolve(objects: GeoObject[]): Map<string, Shape> {
         if (c && p && dist(c, p) > 1e-12) shape = { type: 'circle', c, r: dist(c, p) };
         break;
       }
+      case 'ellipse': {
+        const c = pt(o.center);
+        if (c && o.rx > 1e-12 && o.ry > 1e-12) shape = { type: 'ellipse', c, rx: o.rx, ry: o.ry, rot: o.rot };
+        break;
+      }
       case 'compass': {
         const [c, p, q] = [pt(o.center), pt(o.r1), pt(o.r2)];
         if (c && p && q && dist(p, q) > 1e-12) shape = { type: 'circle', c, r: dist(p, q) };
@@ -236,6 +272,7 @@ export function measure(s: Shape): string | null {
     return n(Math.abs(a) / 2);
   }
   if (s.type === 'angle') return `${n(s.degrees)}°`;
+  if (s.type === 'ellipse') return n(Math.PI * s.rx * s.ry);
   return null;
 }
 
@@ -294,6 +331,19 @@ export function toLines(objects: GeoObject[]): string[] {
       case 'polygon':
         lines.push(`polygon(${o.pts.map(nm).join(', ')})`);
         break;
+      case 'ellipse':
+        if (s.type === 'ellipse') {
+          const t = (s.rot * Math.PI) / 180;
+          const [c, si] = [Math.cos(t), Math.sin(t)];
+          const X = `(x ${s.c.x < 0 ? '+' : '-'} ${num(Math.abs(s.c.x))})`;
+          const Y = `(y ${s.c.y < 0 ? '+' : '-'} ${num(Math.abs(s.c.y))})`;
+          lines.push(
+            Math.abs(si) < 1e-12
+              ? `${X}^2/${num(s.rx * s.rx)} + ${Y}^2/${num(s.ry * s.ry)} = 1`
+              : `(${num(c)}${X} + ${num(si)}${Y})^2/${num(s.rx * s.rx)} + (${num(-si)}${X} + ${num(c)}${Y})^2/${num(s.ry * s.ry)} = 1`,
+          );
+        }
+        break;
       case 'angle':
       case 'text':
         break;
@@ -312,4 +362,113 @@ export function nextName(objects: GeoObject[], lower = false): string {
       if (!used.has(name)) return name;
     }
   }
+}
+
+/** the ids an object is built from */
+export function refs(o: GeoObject): string[] {
+  switch (o.kind) {
+    case 'point':
+    case 'text':
+      return [];
+    case 'midpoint':
+    case 'segment':
+    case 'line':
+    case 'ray':
+    case 'bisector':
+    case 'regular':
+      return [o.a, o.b];
+    case 'intersection':
+      return [o.p, o.q];
+    case 'reflect':
+      return [o.p, o.line];
+    case 'rotate':
+      return [o.p, o.center];
+    case 'perpendicular':
+    case 'parallel':
+      return [o.line, o.through];
+    case 'circle':
+      return [o.center, o.through];
+    case 'compass':
+      return [o.center, o.r1, o.r2];
+    case 'polygon':
+      return o.pts;
+    case 'vertex':
+      return [o.poly];
+    case 'ellipse':
+      return [o.center];
+    case 'angle':
+      return [o.a, o.vertex, o.c];
+  }
+}
+
+/** remove ids and everything built on them */
+export function without(objects: GeoObject[], ids: Set<string>): GeoObject[] {
+  const gone = new Set(ids);
+  for (const o of objects) if (refs(o).some((r) => gone.has(r))) gone.add(o.id);
+  return objects.filter((o) => !gone.has(o.id));
+}
+
+/** the free points (and ellipses, which carry their own size) that the objects hang on: moving them moves the objects */
+export function freeRoots(objects: GeoObject[], ids: Iterable<string>): string[] {
+  const byId = new Map(objects.map((o) => [o.id, o]));
+  const out = new Set<string>();
+  const seen = new Set<string>();
+  const walk = (id: string) => {
+    if (seen.has(id)) return;
+    seen.add(id);
+    const o = byId.get(id);
+    if (!o) return;
+    if (o.kind === 'point' || o.kind === 'text' || o.kind === 'ellipse') out.add(id);
+    refs(o).forEach(walk);
+  };
+  for (const id of ids) walk(id);
+  return [...out];
+}
+
+/**
+ * Can this object be dragged by itself? Free points, labels and shapes drawn
+ * from free points can; points and lines built from others (a midpoint, an
+ * intersection, a perpendicular) follow their parents instead.
+ */
+export function draggable(o: GeoObject): boolean {
+  return ['point', 'text', 'segment', 'line', 'ray', 'circle', 'compass', 'polygon', 'regular', 'ellipse'].includes(o.kind);
+}
+
+/** the objects and every object they are built from, in document order */
+export function withAncestors(objects: GeoObject[], ids: Iterable<string>): GeoObject[] {
+  const byId = new Map(objects.map((o) => [o.id, o]));
+  const keep = new Set<string>();
+  const walk = (id: string) => {
+    if (keep.has(id)) return;
+    keep.add(id);
+    const o = byId.get(id);
+    if (o) refs(o).forEach(walk);
+  };
+  for (const id of ids) walk(id);
+  return objects.filter((o) => keep.has(o.id));
+}
+
+/** copies of objects with new ids (and names), refs remapped; free points shifted by `by` */
+export function cloneObjects(list: GeoObject[], into: GeoObject[], by: Pt, newId: () => string): GeoObject[] {
+  const map = new Map(list.map((o) => [o.id, newId()]));
+  const r = (id: string) => map.get(id) ?? id;
+  let all = [...into];
+  const out: GeoObject[] = [];
+  for (const o of list) {
+    const copy = JSON.parse(JSON.stringify(o)) as GeoObject & Record<string, unknown>;
+    copy.id = r(o.id);
+    for (const key of ['a', 'b', 'p', 'q', 'line', 'center', 'through', 'r1', 'r2', 'vertex', 'c', 'poly'] as const) {
+      if (typeof copy[key] === 'string' && map.has(copy[key] as string)) copy[key] = r(copy[key] as string);
+    }
+    if (o.kind === 'polygon') (copy as { pts: string[] }).pts = o.pts.map(r);
+    if (copy.kind === 'point' || copy.kind === 'text') {
+      copy.x += by.x;
+      copy.y += by.y;
+    }
+    const isPoint = ['point', 'midpoint', 'intersection', 'vertex'].includes(copy.kind);
+    if (copy.kind !== 'text' && copy.kind !== 'reflect' && copy.kind !== 'rotate') copy.name = isPoint ? nextName(all) : nextName(all, true);
+    all = [...all, copy];
+    out.push(copy);
+  }
+  return out;
 }

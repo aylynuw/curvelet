@@ -1,6 +1,12 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type PointerEvent as RPointerEvent, type ReactElement, type WheelEvent as RWheelEvent } from 'react';
 import { newId } from '../storage';
-import { measure, nextName, resolve, toLines, type GeoObject, type Pt, type Shape } from './model';
+import { exactSqrt, exactText } from './exact';
+import { canvasToPdf, canvasToPng, copyFigure, download, figureBounds, figureSvg, svgToCanvas } from './exportFigure';
+import { renderFigure } from './figure';
+import { decorate } from './labels';
+import { cloneObjects, crossings, draggable, freeRoots, measure, nextName, refs, resolve, toLines, withAncestors, without, type Deco, type GeoObject, type Pt, type Shape } from './model';
+import { PropertiesPanel, type QuickAction } from './PropertiesPanel';
+import { BASE_PROPS, loadPresets, savePresets, type GeoProps, type Preset } from './props';
 import { recognize } from './sketch';
 import type { GeoStrings, GeoTool } from './strings';
 
@@ -17,13 +23,23 @@ interface Doc {
   grid: boolean;
   axes: boolean;
   snap: boolean;
+  /** the document's label and number settings */
+  defaults: GeoProps;
+  /** exam view: no grid or axes, black on white */
+  exam: boolean;
+  /** export margin, coordinate units */
+  margin: number;
+}
+interface Snapshot {
+  objects: GeoObject[];
+  defaults: GeoProps;
 }
 const DOC_KEY = 'calculator.geometry.v1';
-const START: Doc = { objects: [], view: { cx: 0, cy: 0, s: 50 }, grid: true, axes: true, snap: true };
+const START: Doc = { objects: [], view: { cx: 0, cy: 0, s: 50 }, grid: true, axes: true, snap: true, defaults: BASE_PROPS, exam: false, margin: 0.5 };
 function loadDoc(): Doc {
   try {
     const v = JSON.parse(localStorage.getItem(DOC_KEY) ?? 'null');
-    if (v && Array.isArray(v.objects) && v.view && typeof v.view.s === 'number') return { ...START, ...v };
+    if (v && Array.isArray(v.objects) && v.view && typeof v.view.s === 'number') return { ...START, ...v, defaults: { ...BASE_PROPS, ...(v.defaults ?? {}) } };
   } catch {
     // a fresh canvas
   }
@@ -31,6 +47,7 @@ function loadDoc(): Doc {
 }
 
 type Need = 'pt' | 'line' | 'curve';
+/** what each click-by-click tool picks, in order */
 const NEEDS: Partial<Record<GeoTool, Need[]>> = {
   point: ['pt'],
   segment: ['pt', 'pt'], line: ['pt', 'pt'], ray: ['pt', 'pt'], circle: ['pt', 'pt'], midpoint: ['pt', 'pt'], bisector: ['pt', 'pt'],
@@ -39,97 +56,141 @@ const NEEDS: Partial<Record<GeoTool, Need[]>> = {
   intersection: ['curve', 'curve'],
   square: ['pt', 'pt'], regular: ['pt', 'pt'],
 };
+/** tools that draw with press, drag, release (a click still works the old way) */
+const DRAG_TOOLS = new Set<GeoTool>(['segment', 'line', 'ray', 'circle', 'rect', 'square', 'triangle', 'ellipse', 'polygon']);
+/** tools that draw into a box */
+const BOX_TOOLS = new Set<GeoTool>(['rect', 'triangle', 'ellipse', 'square']);
 const GROUPS: GeoTool[][] = [
   ['move', 'select', 'point', 'pen'],
-  ['segment', 'line', 'ray', 'polygon', 'square', 'regular', 'circle', 'compass'],
+  ['segment', 'line', 'ray', 'polygon', 'rect', 'square', 'triangle', 'regular', 'circle', 'ellipse', 'compass'],
   ['midpoint', 'perpendicular', 'parallel', 'bisector', 'intersection'],
   ['angle', 'reflect', 'rotate', 'delete'],
 ];
 const GREEK = 'αβγδεζηθ';
+const POINT_KINDS = new Set(['point', 'midpoint', 'intersection', 'reflect', 'rotate', 'vertex']);
+const HANDLES = ['nw', 'n', 'ne', 'e', 'se', 's', 'sw', 'w'] as const;
+type Handle = (typeof HANDLES)[number];
 
-/** the ids an object is built from */
-function refs(o: GeoObject): string[] {
-  switch (o.kind) {
-    case 'point':
-    case 'text':
-      return [];
-    case 'midpoint':
-    case 'segment':
-    case 'line':
-    case 'ray':
-    case 'bisector':
-      return [o.a, o.b];
-    case 'intersection':
-      return [o.p, o.q];
-    case 'reflect':
-      return [o.p, o.line];
-    case 'rotate':
-      return [o.p, o.center];
-    case 'perpendicular':
-    case 'parallel':
-      return [o.line, o.through];
-    case 'circle':
-      return [o.center, o.through];
-    case 'compass':
-      return [o.center, o.r1, o.r2];
-    case 'polygon':
-      return o.pts;
-    case 'regular':
-      return [o.a, o.b];
-    case 'vertex':
-      return [o.poly];
-    case 'angle':
-      return [o.a, o.vertex, o.c];
-  }
+/** copied objects, kept for paste (with what they are built from) */
+let clipboard: GeoObject[] | null = null;
+
+type SnapKind = 'point' | 'midpoint' | 'intersection' | 'grid' | null;
+interface Snap {
+  at: Pt;
+  /** an existing point there, to build on instead of adding a new one */
+  id: string | null;
+  kind: SnapKind;
 }
-/** the free points an object hangs on: moving them moves it */
-function freeRoots(objects: GeoObject[], ids: string[]): string[] {
-  const byId = new Map(objects.map((o) => [o.id, o]));
-  const out = new Set<string>();
-  const seen = new Set<string>();
-  const walk = (id: string) => {
-    if (seen.has(id)) return;
-    seen.add(id);
-    const o = byId.get(id);
-    if (!o) return;
-    if (o.kind === 'point') out.add(id);
-    refs(o).forEach(walk);
-  };
-  ids.forEach(walk);
-  return [...out];
+interface Bounds {
+  x0: number;
+  y0: number;
+  x1: number;
+  y1: number;
 }
-/** remove ids and everything built on them */
-function without(objects: GeoObject[], ids: Set<string>): GeoObject[] {
-  const gone = new Set(ids);
-  for (const o of objects) if (refs(o).some((r) => gone.has(r))) gone.add(o.id);
-  return objects.filter((o) => !gone.has(o.id));
-}
+type Op =
+  | { kind: 'pan'; from: Pt; view: View; moved: boolean }
+  | { kind: 'draw'; tool: GeoTool; start: Snap; startScreen: Pt; cur: Snap; moved: boolean }
+  | { kind: 'move'; start: Pt; orig: Map<string, Pt>; moved: boolean; exclude: Set<string> }
+  | { kind: 'resize'; handle: Handle; box: Bounds; orig: Map<string, Pt>; ell: Map<string, { rx: number; ry: number }>; moved: boolean }
+  | { kind: 'turn'; center: Pt; from: number; orig: Map<string, Pt>; ell: Map<string, number>; moved: boolean }
+  | { kind: 'marquee'; a: Pt; b: Pt; add: boolean }
+  | { kind: 'label'; owner: string; key: string; start: Pt; orig: Pt; moved: boolean }
+  | { kind: 'pinch'; d0: number; c0: Pt; view: View };
+
 const nice = (raw: number) => {
   const p = 10 ** Math.floor(Math.log10(raw));
   const m = raw / p;
   return (m < 1.5 ? 1 : m < 3.5 ? 2 : m < 7.5 ? 5 : 10) * p;
 };
+const dist = (p: Pt, q: Pt) => Math.hypot(q.x - p.x, q.y - p.y);
+const round = (v: number, d = 2) => {
+  const r = Math.round(v * 10 ** d) / 10 ** d;
+  return Object.is(r, -0) ? '0' : String(r);
+};
+/** a length for the drag readout: exact when it has a short exact form */
+const lengthText = (l: number) => {
+  const e = exactSqrt(l * l);
+  const dec = round(l);
+  if (e && e.b !== 1) return `${exactText(e)} ≈ ${dec}`;
+  return dec;
+};
+
+/** the box a drag from p0 to p1 spans: Shift keeps the shape regular (aspect h/w), Alt draws it around p0 */
+function boxOf(p0: Pt, p1: Pt, regular: boolean, center: boolean, aspect: number): Bounds {
+  let [dx, dy] = [p1.x - p0.x, p1.y - p0.y];
+  if (regular) {
+    const w = Math.max(Math.abs(dx), Math.abs(dy) / aspect);
+    dx = (dx < 0 ? -1 : 1) * w;
+    dy = (dy < 0 ? -1 : 1) * w * aspect;
+  }
+  const [a, b] = center ? [{ x: p0.x - dx, y: p0.y - dy }, { x: p0.x + dx, y: p0.y + dy }] : [p0, { x: p0.x + dx, y: p0.y + dy }];
+  return { x0: Math.min(a.x, b.x), x1: Math.max(a.x, b.x), y0: Math.min(a.y, b.y), y1: Math.max(a.y, b.y) };
+}
+
+/** the shape a drag draws, before it is made: for the preview, the readout and the final objects */
+type Draft =
+  | { kind: 'poly'; pts: Pt[] }
+  | { kind: 'circle'; c: Pt; r: number }
+  | { kind: 'ellipse'; c: Pt; rx: number; ry: number }
+  | { kind: 'seg'; a: Pt; b: Pt; extent: 'segment' | 'line' | 'ray' };
+export function draftOf(tool: GeoTool, p0: Pt, p1: Pt, regular: boolean, center: boolean): { draft: Draft; readout: string } | null {
+  if (tool === 'segment' || tool === 'line' || tool === 'ray') {
+    let b = p1;
+    if (regular) {
+      const l = dist(p0, p1);
+      const t = (Math.round(Math.atan2(p1.y - p0.y, p1.x - p0.x) / (Math.PI / 12)) * Math.PI) / 12;
+      b = { x: p0.x + l * Math.cos(t), y: p0.y + l * Math.sin(t) };
+    }
+    const deg = ((Math.atan2(b.y - p0.y, b.x - p0.x) * 180) / Math.PI + 360) % 360;
+    return { draft: { kind: 'seg', a: p0, b, extent: tool }, readout: `${lengthText(dist(p0, b))} · ${round(deg, 1)}°` };
+  }
+  if (tool === 'circle') return { draft: { kind: 'circle', c: p0, r: dist(p0, p1) }, readout: `r = ${lengthText(dist(p0, p1))}` };
+  const aspect = tool === 'triangle' ? Math.sqrt(3) / 2 : 1;
+  const box = boxOf(p0, p1, regular || tool === 'square', center, aspect);
+  const [w, h] = [box.x1 - box.x0, box.y1 - box.y0];
+  const size = `${round(w)} × ${round(h)}`;
+  if (tool === 'rect' || tool === 'square')
+    return { draft: { kind: 'poly', pts: [{ x: box.x0, y: box.y0 }, { x: box.x1, y: box.y0 }, { x: box.x1, y: box.y1 }, { x: box.x0, y: box.y1 }] }, readout: size };
+  if (tool === 'triangle') return { draft: { kind: 'poly', pts: [{ x: box.x0, y: box.y0 }, { x: box.x1, y: box.y0 }, { x: (box.x0 + box.x1) / 2, y: box.y1 }] }, readout: size };
+  if (tool === 'ellipse') return { draft: { kind: 'ellipse', c: { x: (box.x0 + box.x1) / 2, y: (box.y0 + box.y1) / 2 }, rx: w / 2, ry: h / 2 }, readout: size };
+  return null;
+}
 
 export function GeometryTool({ s, onSendToGraph }: { s: GeoStrings; onSendToGraph: (lines: string[]) => void }) {
   const [doc, setDoc] = useState<Doc>(loadDoc);
-  const { objects, view } = doc;
-  const [past, setPast] = useState<GeoObject[][]>([]);
-  const [future, setFuture] = useState<GeoObject[][]>([]);
-  const [tool, setTool] = useState<GeoTool>('move');
+  const { objects, view, defaults } = doc;
+  const [past, setPast] = useState<Snapshot[]>([]);
+  const [future, setFuture] = useState<Snapshot[]>([]);
+  const [tool, setTool] = useState<GeoTool>('select');
   const [picks, setPicks] = useState<string[]>([]);
+  const [boxStart, setBoxStart] = useState<Snap | null>(null);
   const [degrees, setDegrees] = useState(90);
   const [sides, setSides] = useState(5);
-  /** the Select tool's objects */
-  const [sel, setSel] = useState<string[]>([]);
-  const [box, setBox] = useState<{ a: Pt; b: Pt } | null>(null);
-  const group = useRef<{ start: Pt; orig: Map<string, Pt>; moved: boolean } | null>(null);
   const [message, setMessage] = useState<string | null>(null);
-  const [selected, setSelected] = useState<string | null>(null);
+  const [sel, setSel] = useState<string[]>([]);
   const [hover, setHover] = useState<Pt | null>(null);
   const [stroke, setStroke] = useState<Pt[] | null>(null);
+  const [op, setOpState] = useState<Op | null>(null);
+  const opRef = useRef<Op | null>(null);
+  const setOp = (o: Op | null) => {
+    opRef.current = o;
+    setOpState(o);
+  };
+  const [snapMark, setSnapMark] = useState<Snap | null>(null);
+  const [mods, setMods] = useState({ shift: false, alt: false });
+  const [locks, setLocks] = useState({ regular: false, center: false });
+  const [panel, setPanel] = useState<'objects' | 'props'>('objects');
+  const [menu, setMenu] = useState<Pt | null>(null);
+  const [exportOpen, setExportOpen] = useState(false);
+  const [notice, setNotice] = useState<string | null>(null);
+  const [presets, setPresets] = useState<Preset[]>(loadPresets);
+  const [spaceDown, setSpaceDown] = useState(false);
+  const [readout, setReadoutState] = useState<{ text: string; at: Pt } | null>(null);
   const svgRef = useRef<SVGSVGElement>(null);
   const [size, setSize] = useState({ w: 800, h: 600 });
-  const drag = useRef<{ id: string | null; from: Pt; view: View; moved: boolean } | null>(null);
+  const touches = useRef(new Map<number, Pt>());
+  const press = useRef<{ timer: number; at: Pt } | null>(null);
+  const coarse = useRef(false);
 
   useEffect(() => {
     try {
@@ -144,63 +205,41 @@ export function GeometryTool({ s, onSendToGraph }: { s: GeoStrings; onSendToGrap
     ro.observe(el);
     return () => ro.disconnect();
   }, []);
+  useEffect(() => {
+    if (!notice) return;
+    const t = setTimeout(() => setNotice(null), 2600);
+    return () => clearTimeout(t);
+  }, [notice]);
 
   const shapes = useMemo(() => resolve(objects), [objects]);
   const byId = useMemo(() => new Map(objects.map((o) => [o.id, o])), [objects]);
+  const deco = useMemo(() => decorate(objects, shapes, defaults), [objects, shapes, defaults]);
+  const selSet = useMemo(() => new Set(sel.filter((id) => byId.has(id))), [sel, byId]);
+  const regular = mods.shift || locks.regular;
+  const fromCenter = mods.alt || locks.center;
 
-  // ---- history
-  const commit = (next: GeoObject[]) => {
-    setPast((p) => [...p, objects].slice(-200));
+  // ---- history: every action is one step, objects and document settings together
+  const commit = (next: GeoObject[], nextDefaults: GeoProps = defaults) => {
+    setPast((p) => [...p, { objects, defaults }].slice(-200));
     setFuture([]);
-    setDoc((d) => ({ ...d, objects: next }));
+    setDoc((d) => ({ ...d, objects: next, defaults: nextDefaults }));
   };
+  /** the first frame of a drag: the state before it goes on the undo list */
+  const beginEdit = () => setPast((p) => [...p, { objects, defaults }].slice(-200));
   const step = (dir: 'undo' | 'redo') => {
     if (dir === 'undo' && past.length) {
-      setFuture((f) => [objects, ...f]);
-      setDoc((d) => ({ ...d, objects: past[past.length - 1]! }));
+      const last = past[past.length - 1]!;
+      setFuture((f) => [{ objects, defaults }, ...f]);
+      setDoc((d) => ({ ...d, objects: last.objects, defaults: last.defaults }));
       setPast((p) => p.slice(0, -1));
     } else if (dir === 'redo' && future.length) {
-      setPast((p) => [...p, objects]);
-      setDoc((d) => ({ ...d, objects: future[0]! }));
+      const next = future[0]!;
+      setPast((p) => [...p, { objects, defaults }]);
+      setDoc((d) => ({ ...d, objects: next.objects, defaults: next.defaults }));
       setFuture((f) => f.slice(1));
     }
     setPicks([]);
   };
-  const deleteSel = () => {
-    if (!sel.length) return;
-    commit(without(objects, new Set(sel)));
-    setSel([]);
-  };
-  const live = useRef({ step, selected, objects, sel, deleteSel });
-  live.current = { step, selected, objects, sel, deleteSel };
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      const el = e.target as HTMLElement | null;
-      if (el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA')) return;
-      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'z') {
-        e.preventDefault();
-        live.current.step(e.shiftKey ? 'redo' : 'undo');
-      } else if (e.ctrlKey && e.key.toLowerCase() === 'y') {
-        e.preventDefault();
-        live.current.step('redo');
-      } else if (e.key === 'Escape') {
-        setPicks([]);
-        setStroke(null);
-        setSel([]);
-      } else if ((e.key === 'Delete' || e.key === 'Backspace') && live.current.sel.length && el?.closest('.geo')) {
-        e.preventDefault();
-        live.current.deleteSel();
-      } else if ((e.key === 'Delete' || e.key === 'Backspace') && live.current.selected && el?.closest('.geo')) {
-        e.preventDefault();
-        const id = live.current.selected;
-        setPast((p) => [...p, live.current.objects]);
-        setDoc((d) => ({ ...d, objects: without(d.objects, new Set([id])) }));
-        setSelected(null);
-      }
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, []);
 
   // ---- coordinates
   const toScreen = (p: Pt): Pt => ({ x: size.w / 2 + (p.x - view.cx) * view.s, y: size.h / 2 - (p.y - view.cy) * view.s });
@@ -210,17 +249,68 @@ export function GeometryTool({ s, onSendToGraph }: { s: GeoStrings; onSendToGrap
     return { x: e.clientX - r.left, y: e.clientY - r.top };
   };
   const gridStep = nice(60 / view.s);
-  const snapped = (w: Pt): Pt => {
-    if (!doc.snap) return w;
-    const g = gridStep / 2;
-    const r = { x: Math.round(w.x / g) * g, y: Math.round(w.y / g) * g };
-    return Math.hypot(r.x - w.x, r.y - w.y) * view.s < 10 ? r : w;
+  const reach = () => (coarse.current ? 22 : 10);
+
+  // ---- snapping: points, then midpoints, then crossings, then the grid
+  const midpoints = useMemo(() => {
+    const out: Pt[] = [];
+    for (const sh of shapes.values()) {
+      if (sh.type === 'line' && sh.extent === 'segment') out.push({ x: (sh.a.x + sh.b.x) / 2, y: (sh.a.y + sh.b.y) / 2 });
+      if (sh.type === 'polygon')
+        sh.pts.forEach((p, k) => {
+          const q = sh.pts[(k + 1) % sh.pts.length]!;
+          out.push({ x: (p.x + q.x) / 2, y: (p.y + q.y) / 2 });
+        });
+    }
+    return out;
+  }, [shapes]);
+  const meetings = useMemo(() => {
+    const parts: Shape[] = [];
+    for (const sh of shapes.values()) {
+      if (sh.type === 'line' || sh.type === 'circle') parts.push(sh);
+      if (sh.type === 'polygon') sh.pts.forEach((p, k) => parts.push({ type: 'line', a: p, b: sh.pts[(k + 1) % sh.pts.length]!, extent: 'segment' }));
+    }
+    const out: Pt[] = [];
+    for (let i = 0; i < parts.length && out.length < 400; i++) for (let j = i + 1; j < parts.length; j++) out.push(...crossings(parts[i]!, parts[j]!));
+    return out;
+  }, [shapes]);
+  const snapAt = (sp: Pt, exclude?: Set<string>): Snap => {
+    const R = reach();
+    const near = (p: Pt) => {
+      const q = toScreen(p);
+      return Math.hypot(q.x - sp.x, q.y - sp.y);
+    };
+    let best: Snap | null = null;
+    let bestD = R;
+    for (const [id, sh] of shapes) {
+      if (sh.type !== 'point' || exclude?.has(id)) continue;
+      const d = near(sh.at);
+      if (d < bestD) [best, bestD] = [{ at: sh.at, id, kind: 'point' }, d];
+    }
+    if (best) return best;
+    for (const p of midpoints) {
+      const d = near(p);
+      if (d < bestD) [best, bestD] = [{ at: p, id: null, kind: 'midpoint' }, d];
+    }
+    if (best) return best;
+    for (const p of meetings) {
+      const d = near(p);
+      if (d < bestD) [best, bestD] = [{ at: p, id: null, kind: 'intersection' }, d];
+    }
+    if (best) return best;
+    const w = toWorld(sp);
+    if (doc.snap) {
+      const g = gridStep / 2;
+      const r = { x: Math.round(w.x / g) * g, y: Math.round(w.y / g) * g };
+      if (near(r) < R) return { at: r, id: null, kind: 'grid' };
+    }
+    return { at: w, id: null, kind: null };
   };
 
   // ---- hit testing, in screen pixels
   const hitPoint = (sp: Pt, skip?: string): string | null => {
     let best: string | null = null;
-    let bestD = 12;
+    let bestD = reach() + 2;
     for (const [id, sh] of shapes) {
       if (sh.type !== 'point' || id === skip) continue;
       const q = toScreen(sh.at);
@@ -234,6 +324,13 @@ export function GeometryTool({ s, onSendToGraph }: { s: GeoStrings; onSendToGrap
       const c = toScreen(sh.c);
       return Math.abs(Math.hypot(sp.x - c.x, sp.y - c.y) - sh.r * view.s);
     }
+    if (sh.type === 'ellipse') {
+      const w = toWorld(sp);
+      const t = (-sh.rot * Math.PI) / 180;
+      const [dx, dy] = [w.x - sh.c.x, w.y - sh.c.y];
+      const [x, y] = [dx * Math.cos(t) - dy * Math.sin(t), dx * Math.sin(t) + dy * Math.cos(t)];
+      return Math.abs(Math.hypot(x / sh.rx, y / sh.ry) - 1) * Math.min(sh.rx, sh.ry) * view.s;
+    }
     const seg = (a: Pt, b: Pt, extent: 'segment' | 'line' | 'ray') => {
       const [p, q] = [toScreen(a), toScreen(b)];
       const d = { x: q.x - p.x, y: q.y - p.y };
@@ -244,11 +341,12 @@ export function GeometryTool({ s, onSendToGraph }: { s: GeoStrings; onSendToGrap
     };
     if (sh.type === 'line') return seg(sh.a, sh.b, sh.extent);
     if (sh.type === 'polygon') return Math.min(...sh.pts.map((p, k) => seg(p, sh.pts[(k + 1) % sh.pts.length]!, 'segment')));
+    if (sh.type === 'angle') return Math.hypot(sp.x - toScreen(sh.v).x, sp.y - toScreen(sh.v).y) < 26 ? 0 : Infinity;
     return Infinity;
   };
   const hitCurve = (sp: Pt, need: Need | 'any'): string | null => {
     let best: string | null = null;
-    let bestD = 8;
+    let bestD = coarse.current ? 16 : 8;
     for (const [id, sh] of shapes) {
       const ok = need === 'any' ? sh.type !== 'point' : need === 'line' ? sh.type === 'line' : sh.type === 'line' || sh.type === 'circle';
       if (!ok) continue;
@@ -256,14 +354,19 @@ export function GeometryTool({ s, onSendToGraph }: { s: GeoStrings; onSendToGrap
       if (d < bestD) [best, bestD] = [id, d];
     }
     if (best || need !== 'any') return best;
-    // inside a filled polygon: the topmost one
+    // inside a filled polygon or ellipse: the topmost one
+    const w = toWorld(sp);
     for (const [id, sh] of [...shapes].reverse()) {
+      if (sh.type === 'ellipse') {
+        const t = (-sh.rot * Math.PI) / 180;
+        const [dx, dy] = [w.x - sh.c.x, w.y - sh.c.y];
+        if (Math.hypot((dx * Math.cos(t) - dy * Math.sin(t)) / sh.rx, (dx * Math.sin(t) + dy * Math.cos(t)) / sh.ry) <= 1) return id;
+      }
       if (sh.type !== 'polygon') continue;
-      const pts = sh.pts.map(toScreen);
       let inside = false;
-      for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) {
-        const [p, q] = [pts[i]!, pts[j]!];
-        if (p.y > sp.y !== q.y > sp.y && sp.x < ((q.x - p.x) * (sp.y - p.y)) / (q.y - p.y) + p.x) inside = !inside;
+      for (let i = 0, j = sh.pts.length - 1; i < sh.pts.length; j = i++) {
+        const [p, q] = [sh.pts[i]!, sh.pts[j]!];
+        if (p.y > w.y !== q.y > w.y && w.x < ((q.x - p.x) * (w.y - p.y)) / (q.y - p.y) + p.x) inside = !inside;
       }
       if (inside) return id;
     }
@@ -271,7 +374,6 @@ export function GeometryTool({ s, onSendToGraph }: { s: GeoStrings; onSendToGrap
   };
 
   // ---- building
-  const kindOfLine = new Set(['segment', 'line', 'ray', 'perpendicular', 'parallel', 'bisector']);
   const lowerName = (list: GeoObject[]) => nextName(list, true);
   const angleName = (list: GeoObject[]) => {
     const used = new Set(list.map((o) => o.name));
@@ -281,6 +383,21 @@ export function GeometryTool({ s, onSendToGraph }: { s: GeoStrings; onSendToGrap
     const id = newId();
     return [[...list, { id, kind: 'point', name: nextName(list), x: at.x, y: at.y }], id];
   };
+  /** the point at a snap: the existing one, or a new free point there */
+  const pointAt = (list: GeoObject[], snap: Snap): [GeoObject[], string] => (snap.id ? [list, snap.id] : addPoint(list, snap.at));
+  /** a point at `at`: one of the snaps if it sits there, else a new one */
+  const pointNear = (list: GeoObject[], at: Pt, snaps: Snap[]): [GeoObject[], string] => {
+    const hit = snaps.find((sn) => sn.id && dist(sn.at, at) < 1e-9);
+    return hit ? [list, hit.id!] : addPoint(list, at);
+  };
+  const regularOn = (list: GeoObject[], a: string, b: string, n: number): GeoObject[] => {
+    const id = newId();
+    const count = Math.max(3, Math.min(60, Math.round(n)));
+    let next: GeoObject[] = [...list, { id, kind: 'regular', name: lowerName(list), a, b, n: count }];
+    for (let k = 2; k < count; k++) next = [...next, { id: newId(), kind: 'vertex', name: nextName(next), poly: id, k }];
+    return next;
+  };
+
   /** the objects a finished pick list makes */
   const build = (list: GeoObject[], t: GeoTool, ids: string[]): GeoObject[] | null => {
     const id = newId();
@@ -297,13 +414,8 @@ export function GeometryTool({ s, onSendToGraph }: { s: GeoStrings; onSendToGrap
       case 'midpoint':
         return a === b ? null : [...list, { id, kind: 'midpoint', name: nextName(list), a, b }];
       case 'square':
-      case 'regular': {
-        if (a === b) return null;
-        const n = t === 'square' ? 4 : Math.max(3, Math.min(60, Math.round(sides)));
-        let next: GeoObject[] = [...list, { id, kind: 'regular', name: lowerName(list), a, b, n }];
-        for (let k = 2; k < n; k++) next = [...next, { id: newId(), kind: 'vertex', name: nextName(next), poly: id, k }];
-        return next;
-      }
+      case 'regular':
+        return a === b ? null : regularOn(list, a, b, t === 'square' ? 4 : sides);
       case 'bisector':
         return a === b ? null : [...list, { id, kind: 'bisector', name: lowerName(list), a, b }];
       case 'perpendicular':
@@ -334,6 +446,7 @@ export function GeometryTool({ s, onSendToGraph }: { s: GeoStrings; onSendToGrap
     }
   };
 
+  /** the click-by-click way of building: each click picks a point (or a line), the last one builds */
   const pick = (sp: Pt) => {
     setMessage(null);
     let list = objects;
@@ -343,20 +456,24 @@ export function GeometryTool({ s, onSendToGraph }: { s: GeoStrings; onSendToGrap
       return;
     }
     if (tool === 'point') {
-      if (hitPoint(sp)) return;
-      commit(addPoint(objects, snapped(toWorld(sp)))[0]);
+      const sn = snapAt(sp);
+      if (sn.id) return;
+      commit(addPoint(objects, sn.at)[0]);
       return;
     }
     if (tool === 'polygon') {
-      let id = hitPoint(sp);
-      if (id && picks.length >= 3 && id === picks[0]) {
-        commit([...list, { id: newId(), kind: 'polygon', name: lowerName(list), pts: picks }]);
+      const sn = snapAt(sp);
+      let id = sn.id;
+      if (id && picksRef.current.length >= 3 && id === picksRef.current[0]) {
+        commit([...list, { id: newId(), kind: 'polygon', name: lowerName(list), pts: picksRef.current }]);
         setPicks([]);
+        picksRef.current = [];
         return;
       }
-      if (!id) [list, id] = addPoint(list, snapped(toWorld(sp)));
+      if (!id) [list, id] = addPoint(list, sn.at);
       if (list !== objects) commit(list);
-      setPicks((p) => [...p, id!]);
+      picksRef.current = [...picksRef.current, id!];
+      setPicks(picksRef.current);
       return;
     }
     const needs = NEEDS[tool];
@@ -364,8 +481,7 @@ export function GeometryTool({ s, onSendToGraph }: { s: GeoStrings; onSendToGrap
     const need = needs[picks.length]!;
     let id: string | null;
     if (need === 'pt') {
-      id = hitPoint(sp);
-      if (!id) [list, id] = addPoint(list, snapped(toWorld(sp)));
+      [list, id] = pointAt(list, snapAt(sp));
     } else {
       id = hitCurve(sp, need);
       if (!id) {
@@ -384,122 +500,475 @@ export function GeometryTool({ s, onSendToGraph }: { s: GeoStrings; onSendToGrap
     else if (list !== objects) commit(list);
     setPicks([]);
   };
+  // a polygon's corners as they are placed (a drag places two before React re-renders)
+  const picksRef = useRef<string[]>([]);
+  useEffect(() => {
+    picksRef.current = picks;
+  }, [picks]);
+
+  /** a drag (or two clicks) from `a` to `b` with a drawing tool: the shape it makes */
+  const finishDraw = (t: GeoTool, a: Snap, b: Snap) => {
+    const made = draftOf(t, a.at, b.at, regular, fromCenter);
+    if (!made) return;
+    const d = made.draft;
+    let list = objects;
+    let id: string;
+    const ids: string[] = [];
+    const snaps = [a, b];
+    if (d.kind === 'seg') {
+      if (dist(d.a, d.b) < 1e-9) return;
+      [list, id] = pointAt(list, a);
+      ids.push(id);
+      [list, id] = regular ? pointNear(list, d.b, snaps) : pointAt(list, b);
+      ids.push(id);
+      const built = build(list, t, ids);
+      if (built) commit(built);
+    } else if (d.kind === 'circle') {
+      if (d.r < 1e-9) return;
+      [list, id] = pointAt(list, a);
+      ids.push(id);
+      [list, id] = pointAt(list, b);
+      ids.push(id);
+      const built = build(list, 'circle', ids);
+      if (built) commit(built);
+    } else if (d.kind === 'ellipse') {
+      if (d.rx < 1e-9 || d.ry < 1e-9) return;
+      [list, id] = pointNear(list, d.c, snaps);
+      commit([...list, { id: newId(), kind: 'ellipse', name: lowerName(list), center: id, rx: d.rx, ry: d.ry, rot: 0 }]);
+    } else {
+      const area = Math.abs(d.pts.reduce((acc, p, k) => acc + p.x * d.pts[(k + 1) % d.pts.length]!.y - d.pts[(k + 1) % d.pts.length]!.x * p.y, 0));
+      if (area < 1e-9) return;
+      if (t === 'square') {
+        let l2 = list;
+        let pa: string;
+        let pb: string;
+        [l2, pa] = pointNear(l2, d.pts[0]!, snaps);
+        [l2, pb] = pointNear(l2, d.pts[1]!, snaps);
+        commit(regularOn(l2, pa, pb, 4));
+        return;
+      }
+      for (const p of d.pts) {
+        [list, id] = pointNear(list, p, snaps);
+        ids.push(id);
+      }
+      commit([...list, { id: newId(), kind: 'polygon', name: lowerName(list), pts: ids }]);
+    }
+  };
+
+  // ---- selection helpers
+  const selected = useMemo(() => objects.filter((o) => selSet.has(o.id)), [objects, selSet]);
+  /** the free points a selection moves with: only from objects that can be dragged */
+  const moversOf = (ids: Iterable<string>) => freeRoots(objects, [...ids].filter((id) => byId.get(id) && draggable(byId.get(id)!)));
+  const origOf = (roots: string[]) => {
+    const orig = new Map<string, Pt>();
+    for (const r of roots) {
+      const o = byId.get(r);
+      if (o?.kind === 'point' || o?.kind === 'text') orig.set(r, { x: o.x, y: o.y });
+    }
+    return orig;
+  };
+  const selBox = useMemo((): Bounds | null => {
+    if (!selected.some(draggable)) return null;
+    return figureBounds(selected, shapes, { texts: [], lines: [], dots: [] });
+  }, [selected, shapes]);
+  type Ellipse = Extract<GeoObject, { kind: 'ellipse' }>;
+  const setPositions = (orig: Map<string, Pt>, f: (p: Pt) => Pt, ell?: (o: Ellipse) => Partial<Ellipse>) =>
+    setDoc((d) => ({
+      ...d,
+      objects: d.objects.map((o) => {
+        if ((o.kind === 'point' || o.kind === 'text') && orig.has(o.id)) {
+          const p = f(orig.get(o.id)!);
+          return { ...o, x: p.x, y: p.y };
+        }
+        if (o.kind === 'ellipse' && ell) return { ...o, ...ell(o) };
+        return o;
+      }),
+    }));
+
+  const deleteSel = () => {
+    if (!selSet.size) return;
+    commit(without(objects, selSet));
+    setSel([]);
+  };
+  const duplicate = (list: GeoObject[] | null = null) => {
+    const source = list ?? withAncestors(objects, selSet);
+    if (!source.length) return;
+    const clones = cloneObjects(source, objects, { x: gridStep, y: -gridStep }, newId);
+    commit([...objects, ...clones]);
+    // select the copies of what was selected (or everything pasted)
+    const map = new Map(source.map((o, k) => [o.id, clones[k]!.id]));
+    setSel(list ? clones.map((c) => c.id) : [...selSet].map((id) => map.get(id)!).filter(Boolean));
+    setTool('select');
+  };
+  const nudge = (dx: number, dy: number) => {
+    const roots = moversOf(selSet);
+    if (!roots.length) return;
+    const orig = origOf(roots);
+    beginEdit();
+    setFuture([]);
+    setPositions(orig, (p) => ({ x: p.x + dx, y: p.y + dy }));
+  };
+
+  // ---- keys: shortcuts like a drawing app (Cmd on Mac, Ctrl elsewhere)
+  const live = useRef({ step, deleteSel, duplicate, nudge, objects, selSet, gridStep, op, setOp, picks, boxStart });
+  live.current = { step, deleteSel, duplicate, nudge, objects, selSet, gridStep, op, setOp, picks, boxStart };
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      setMods({ shift: e.shiftKey, alt: e.altKey });
+      const el = e.target as HTMLElement | null;
+      if (el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.tagName === 'SELECT')) return;
+      const inGeo = !el || el === document.body || Boolean(el.closest('.geo'));
+      if (!inGeo) return;
+      const L = live.current;
+      const mod = e.metaKey || e.ctrlKey;
+      const k = e.key.toLowerCase();
+      if (e.key === ' ') {
+        if (el?.tagName === 'BUTTON') return;
+        e.preventDefault();
+        setSpaceDown(true);
+      } else if (mod && k === 'z') {
+        e.preventDefault();
+        L.step(e.shiftKey ? 'redo' : 'undo');
+      } else if (e.ctrlKey && k === 'y') {
+        e.preventDefault();
+        L.step('redo');
+      } else if (mod && k === 'a') {
+        e.preventDefault();
+        setTool('select');
+        setSel(L.objects.map((o) => o.id));
+      } else if (mod && k === 'd') {
+        e.preventDefault();
+        L.duplicate();
+      } else if (mod && k === 'c') {
+        if (!L.selSet.size) return;
+        e.preventDefault();
+        clipboard = withAncestors(L.objects, L.selSet);
+      } else if (mod && k === 'v') {
+        if (!clipboard) return;
+        e.preventDefault();
+        L.duplicate(clipboard);
+      } else if (e.key === 'Escape') {
+        setMenu(null);
+        setExportOpen(false);
+        if (L.op?.kind === 'draw' || L.op?.kind === 'marquee') L.setOp(null);
+        else if (L.picks.length || L.boxStart) {
+          setPicks([]);
+          setBoxStart(null);
+        } else setSel([]);
+        setStroke(null);
+        setSnapMark(null);
+      } else if ((e.key === 'Delete' || e.key === 'Backspace') && L.selSet.size) {
+        e.preventDefault();
+        L.deleteSel();
+      } else if (e.key.startsWith('Arrow') && L.selSet.size) {
+        e.preventDefault();
+        const d = e.shiftKey ? L.gridStep : L.gridStep / 10;
+        L.nudge(e.key === 'ArrowLeft' ? -d : e.key === 'ArrowRight' ? d : 0, e.key === 'ArrowDown' ? -d : e.key === 'ArrowUp' ? d : 0);
+      }
+    };
+    const onUp = (e: KeyboardEvent) => {
+      setMods({ shift: e.shiftKey, alt: e.altKey });
+      if (e.key === ' ') setSpaceDown(false);
+    };
+    window.addEventListener('keydown', onKey);
+    window.addEventListener('keyup', onUp);
+    return () => {
+      window.removeEventListener('keydown', onKey);
+      window.removeEventListener('keyup', onUp);
+    };
+  }, []);
 
   // ---- pointer
+  const openMenu = (sp: Pt) => {
+    const id = hitPoint(sp) ?? hitCurve(sp, 'any');
+    if (id && !selSet.has(id)) setSel([id]);
+    setMenu(sp);
+    setExportOpen(false);
+  };
+  const setReadout = (text: string, at: Pt) => setReadoutState({ text, at });
   const onDown = (e: RPointerEvent<SVGSVGElement>) => {
-    if (e.button !== 0) return;
+    coarse.current = e.pointerType === 'touch' || e.pointerType === 'pen';
     const sp = eventPt(e);
+    setMenu(null);
+    setExportOpen(false);
     (e.target as Element).setPointerCapture?.(e.pointerId);
+    if (e.pointerType === 'touch') {
+      touches.current.set(e.pointerId, sp);
+      if (touches.current.size === 2) {
+        // two fingers: pan and zoom; whatever one finger started is dropped
+        if (press.current) clearTimeout(press.current.timer);
+        const [p, q] = [...touches.current.values()] as [Pt, Pt];
+        setOp({ kind: 'pinch', d0: dist(p, q), c0: { x: (p.x + q.x) / 2, y: (p.y + q.y) / 2 }, view });
+        setStroke(null);
+        return;
+      }
+      press.current = { at: sp, timer: window.setTimeout(() => openMenu(sp), 550) };
+    }
+    if (e.button === 2) return;
+    if (e.button === 1 || spaceDown) {
+      setOp({ kind: 'pan', from: sp, view, moved: false });
+      return;
+    }
     if (tool === 'pen') {
       setStroke([sp]);
       return;
     }
+    // a label: drag it to a place of its own
+    const labelEl = (e.target as Element).closest?.('[data-label]');
+    if (labelEl && (tool === 'select' || tool === 'move')) {
+      const owner = labelEl.getAttribute('data-owner')!;
+      const key = labelEl.getAttribute('data-label')!;
+      beginEdit();
+      setOp({ kind: 'label', owner, key, start: toWorld(sp), orig: byId.get(owner)?.deco?.moved?.[key] ?? { x: 0, y: 0 }, moved: false });
+      return;
+    }
     if (tool === 'select') {
+      const handle = (e.target as Element).closest?.('[data-handle]')?.getAttribute('data-handle');
+      if (handle && selBox) {
+        const roots = moversOf(selSet);
+        beginEdit();
+        if (handle === 'rot') {
+          const center = { x: (selBox.x0 + selBox.x1) / 2, y: (selBox.y0 + selBox.y1) / 2 };
+          const w = toWorld(sp);
+          const ell = new Map<string, number>();
+          for (const id of roots) {
+            const o = byId.get(id);
+            if (o?.kind === 'ellipse') ell.set(id, o.rot);
+          }
+          setOp({ kind: 'turn', center, from: Math.atan2(w.y - center.y, w.x - center.x), orig: origOf(roots), ell, moved: false });
+        } else {
+          const ell = new Map<string, { rx: number; ry: number }>();
+          for (const id of roots) {
+            const o = byId.get(id);
+            if (o?.kind === 'ellipse') ell.set(id, { rx: o.rx, ry: o.ry });
+          }
+          setOp({ kind: 'resize', handle: handle as Handle, box: selBox, orig: origOf(roots), ell, moved: false });
+        }
+        return;
+      }
       const id = hitPoint(sp) ?? hitCurve(sp, 'any');
       if (!id) {
         if (!e.shiftKey) setSel([]);
-        setBox({ a: sp, b: sp });
+        setOp({ kind: 'marquee', a: sp, b: sp, add: e.shiftKey });
         return;
       }
-      let next = sel;
-      if (e.shiftKey) next = sel.includes(id) ? sel.filter((x) => x !== id) : [...sel, id];
-      else if (!sel.includes(id)) next = [id];
-      setSel(next);
-      if (!next.includes(id)) return;
-      const roots = freeRoots(objects, next);
-      const orig = new Map<string, Pt>();
-      for (const r of roots) {
-        const o = byId.get(r);
-        if (o?.kind === 'point') orig.set(r, { x: o.x, y: o.y });
+      if (e.shiftKey) {
+        setSel((cur) => (cur.includes(id) ? cur.filter((x) => x !== id) : [...cur, id]));
+        return;
       }
-      setPast((p) => [...p, objects]);
-      group.current = { start: toWorld(sp), orig, moved: false };
+      const o = byId.get(id)!;
+      // a free corner of something selected: drag just that corner, keep the selection
+      if (o.kind === 'point' && selSet.size && !selSet.has(id) && moversOf(selSet).includes(id)) {
+        beginEdit();
+        setOp({ kind: 'move', start: toWorld(sp), orig: origOf([id]), moved: false, exclude: new Set([id]) });
+        return;
+      }
+      const next = selSet.has(id) ? [...selSet] : [id];
+      if (!selSet.has(id)) setSel(next);
+      const roots = moversOf(next);
+      if (!draggable(o) || !roots.length) return;
+      beginEdit();
+      setOp({ kind: 'move', start: toWorld(sp), orig: origOf(roots), moved: false, exclude: new Set(roots) });
       return;
     }
     if (tool === 'move') {
       const id = hitPoint(sp);
-      const free = id && byId.get(id)?.kind === 'point' ? id : null;
-      setSelected(id ?? hitCurve(sp, 'any'));
-      if (free) setPast((p) => [...p, objects]);
-      drag.current = { id: free, from: sp, view, moved: false };
+      const o = id ? byId.get(id) : null;
+      if (id) setSel([id]);
+      if (o?.kind === 'point') {
+        beginEdit();
+        setOp({ kind: 'move', start: toWorld(sp), orig: origOf([id!]), moved: false, exclude: new Set([id!]) });
+      } else setOp({ kind: 'pan', from: sp, view, moved: false });
+      return;
+    }
+    const clicking = (tool === 'square' || ['segment', 'line', 'ray', 'circle'].includes(tool)) && picks.length > 0;
+    if (DRAG_TOOLS.has(tool) && !clicking) {
+      const start = snapAt(sp);
+      if (tool === 'polygon') pick(sp);
+      setOp({ kind: 'draw', tool, start, startScreen: sp, cur: start, moved: false });
       return;
     }
     pick(sp);
   };
+
   const onMove = (e: RPointerEvent<SVGSVGElement>) => {
     const sp = eventPt(e);
     setHover(toWorld(sp));
+    setMods({ shift: e.shiftKey, alt: e.altKey });
+    if (e.pointerType === 'touch' && touches.current.has(e.pointerId)) touches.current.set(e.pointerId, sp);
+    if (press.current && dist(press.current.at, sp) > 8) {
+      clearTimeout(press.current.timer);
+      press.current = null;
+    }
     if (stroke) {
       setStroke((st) => (st ? [...st, sp] : st));
       return;
     }
-    if (box) {
-      setBox({ a: box.a, b: sp });
+    const o = opRef.current;
+    if (!o) {
+      if (DRAG_TOOLS.has(tool) || NEEDS[tool]?.[picks.length] === 'pt') setSnapMark(snapAt(sp));
+      else setSnapMark(null);
       return;
     }
-    const g = group.current;
-    if (g) {
-      g.moved = true;
+    if (o.kind === 'pinch') {
+      if (touches.current.size < 2) return;
+      const [p, q] = [...touches.current.values()] as [Pt, Pt];
+      const d = dist(p, q);
+      const c = { x: (p.x + q.x) / 2, y: (p.y + q.y) / 2 };
+      const s1 = Math.min(5000, Math.max(2, (o.view.s * d) / (o.d0 || 1)));
+      // the world point under the first centre stays under the fingers
+      const wx = o.view.cx + (o.c0.x - size.w / 2) / o.view.s;
+      const wy = o.view.cy - (o.c0.y - size.h / 2) / o.view.s;
+      setDoc((dd) => ({ ...dd, view: { s: s1, cx: wx - (c.x - size.w / 2) / s1, cy: wy + (c.y - size.h / 2) / s1 } }));
+      return;
+    }
+    if (o.kind === 'pan') {
+      setDoc((d) => ({ ...d, view: { ...o.view, cx: o.view.cx - (sp.x - o.from.x) / o.view.s, cy: o.view.cy + (sp.y - o.from.y) / o.view.s } }));
+      return;
+    }
+    if (o.kind === 'draw') {
+      const cur = snapAt(sp);
+      setSnapMark(cur.kind ? cur : null);
+      setOp({ ...o, cur, moved: o.moved || dist(sp, o.startScreen) > 4 });
+      return;
+    }
+    if (o.kind === 'marquee') {
+      setOp({ ...o, b: sp });
+      return;
+    }
+    if (o.kind === 'label') {
       const w = toWorld(sp);
-      let [dx, dy] = [w.x - g.start.x, w.y - g.start.y];
-      // the first point lands on the grid, the rest keep their places relative to it
-      const first = g.orig.values().next().value;
-      if (first) {
-        const to = snapped({ x: first.x + dx, y: first.y + dy });
-        [dx, dy] = [to.x - first.x, to.y - first.y];
-      }
-      setDoc((doc0) => ({ ...doc0, objects: doc0.objects.map((o) => (o.kind === 'point' && g.orig.has(o.id) ? { ...o, x: g.orig.get(o.id)!.x + dx, y: g.orig.get(o.id)!.y + dy } : o)) }));
+      const moved = { x: o.orig.x + w.x - o.start.x, y: o.orig.y + w.y - o.start.y };
+      o.moved = true;
+      setDoc((d) => ({ ...d, objects: d.objects.map((x) => (x.id === o.owner ? { ...x, deco: { ...x.deco, moved: { ...x.deco?.moved, [o.key]: moved } } } : x)) }));
       return;
     }
-    const d = drag.current;
-    if (!d) return;
-    d.moved = true;
-    if (d.id) {
-      const w = snapped(toWorld(sp));
-      setDoc((doc0) => ({ ...doc0, objects: doc0.objects.map((o) => (o.id === d.id && o.kind === 'point' ? { ...o, x: w.x, y: w.y } : o)) }));
-    } else {
-      setDoc((doc0) => ({ ...doc0, view: { ...d.view, cx: d.view.cx - (sp.x - d.from.x) / d.view.s, cy: d.view.cy + (sp.y - d.from.y) / d.view.s } }));
+    if (o.kind === 'move') {
+      o.moved = true;
+      const w = toWorld(sp);
+      let [dx, dy] = [w.x - o.start.x, w.y - o.start.y];
+      // the first point lands on a snap, the rest keep their places relative to it
+      const first = o.orig.values().next().value as Pt | undefined;
+      if (first) {
+        const sn = snapAt(toScreen({ x: first.x + dx, y: first.y + dy }), o.exclude);
+        setSnapMark(sn.kind ? sn : null);
+        [dx, dy] = [sn.at.x - first.x, sn.at.y - first.y];
+      }
+      setPositions(o.orig, (p) => ({ x: p.x + dx, y: p.y + dy }));
+      return;
+    }
+    if (o.kind === 'resize') {
+      o.moved = true;
+      const w = toWorld(sp);
+      const { box, handle } = o;
+      const usesX = handle !== 'n' && handle !== 's';
+      const usesY = handle !== 'e' && handle !== 'w';
+      const hx = handle.includes('w') ? box.x0 : box.x1;
+      const hy = handle.includes('s') ? box.y0 : box.y1;
+      const center = { x: (box.x0 + box.x1) / 2, y: (box.y0 + box.y1) / 2 };
+      const anchor = fromCenter ? center : { x: handle.includes('w') ? box.x1 : box.x0, y: handle.includes('s') ? box.y1 : box.y0 };
+      const safe = (v: number) => (Math.abs(v) < 1e-9 ? 1e-9 : v);
+      let sx = usesX ? (w.x - anchor.x) / safe(hx - anchor.x) : 1;
+      let sy = usesY ? (w.y - anchor.y) / safe(hy - anchor.y) : 1;
+      if (regular) {
+        if (usesX && usesY) {
+          const m = Math.max(Math.abs(sx), Math.abs(sy));
+          [sx, sy] = [Math.sign(sx || 1) * m, Math.sign(sy || 1) * m];
+        } else if (usesX) sy = Math.abs(sx);
+        else sx = Math.abs(sy);
+      }
+      setPositions(
+        o.orig,
+        (p) => ({ x: anchor.x + (p.x - anchor.x) * sx, y: anchor.y + (p.y - anchor.y) * sy }),
+        (el) => (o.ell.has(el.id) ? { rx: o.ell.get(el.id)!.rx * Math.abs(sx), ry: o.ell.get(el.id)!.ry * Math.abs(sy) } : {}),
+      );
+      setReadout(`${round((box.x1 - box.x0) * Math.abs(sx))} × ${round((box.y1 - box.y0) * Math.abs(sy))}`, sp);
+      return;
+    }
+    if (o.kind === 'turn') {
+      o.moved = true;
+      const w = toWorld(sp);
+      let t = Math.atan2(w.y - o.center.y, w.x - o.center.x) - o.from;
+      if (regular) t = Math.round(t / (Math.PI / 12)) * (Math.PI / 12);
+      const [c, si] = [Math.cos(t), Math.sin(t)];
+      setPositions(
+        o.orig,
+        (p) => ({ x: o.center.x + (p.x - o.center.x) * c - (p.y - o.center.y) * si, y: o.center.y + (p.x - o.center.x) * si + (p.y - o.center.y) * c }),
+        (el) => (o.ell.has(el.id) ? { rot: o.ell.get(el.id)! + (t * 180) / Math.PI } : {}),
+      );
+      setReadout(`${round(((((t * 180) / Math.PI) % 360) + 540) % 360 - 180, 1)}°`, sp);
     }
   };
+
   const onUp = (e: RPointerEvent<SVGSVGElement>) => {
+    touches.current.delete(e.pointerId);
+    if (press.current) {
+      clearTimeout(press.current.timer);
+      press.current = null;
+    }
+    setReadoutState(null);
     if (stroke) {
       finishStroke(stroke);
       setStroke(null);
     }
-    if (box) {
-      const [x0, x1] = [Math.min(box.a.x, box.b.x), Math.max(box.a.x, box.b.x)];
-      const [y0, y1] = [Math.min(box.a.y, box.b.y), Math.max(box.a.y, box.b.y)];
-      if (x1 - x0 > 3 || y1 - y0 > 3) {
-        const inside = (p: Pt) => {
-          const q = toScreen(p);
-          return q.x >= x0 && q.x <= x1 && q.y >= y0 && q.y <= y1;
-        };
-        const hit: string[] = [];
-        for (const [id, sh] of shapes) {
-          const pts =
-            sh.type === 'point' || sh.type === 'text' ? [sh.at]
-            : sh.type === 'line' ? [sh.a, sh.b]
-            : sh.type === 'circle' ? [{ x: sh.c.x - sh.r, y: sh.c.y - sh.r }, { x: sh.c.x + sh.r, y: sh.c.y + sh.r }]
-            : sh.type === 'polygon' ? sh.pts
-            : [sh.a, sh.v, sh.c];
-          if (pts.every(inside)) hit.push(id);
-        }
-        setSel((cur) => (e.shiftKey ? [...new Set([...cur, ...hit])] : hit));
-      }
-      setBox(null);
-    }
-    const g = group.current;
-    if (g) {
-      if (!g.moved) setPast((p) => p.slice(0, -1));
+    const o = opRef.current;
+    if (o?.kind === 'pinch' && touches.current.size) return;
+    setOp(null);
+    setSnapMark(null);
+    if (!o || o.kind === 'pinch' || o.kind === 'pan') return;
+    if (o.kind === 'move' || o.kind === 'resize' || o.kind === 'turn' || o.kind === 'label') {
+      if (!o.moved) setPast((p) => p.slice(0, -1));
       else setFuture([]);
-      group.current = null;
+      return;
     }
-    const d = drag.current;
-    // a click on a free point that didn't move isn't an edit
-    if (d?.id && !d.moved) setPast((p) => p.slice(0, -1));
-    if (d?.id && d.moved) setFuture([]);
-    drag.current = null;
+    if (o.kind === 'marquee') {
+      const [x0, x1] = [Math.min(o.a.x, o.b.x), Math.max(o.a.x, o.b.x)];
+      const [y0, y1] = [Math.min(o.a.y, o.b.y), Math.max(o.a.y, o.b.y)];
+      if (x1 - x0 < 3 && y1 - y0 < 3) return;
+      const inside = (p: Pt) => {
+        const q = toScreen(p);
+        return q.x >= x0 && q.x <= x1 && q.y >= y0 && q.y <= y1;
+      };
+      const hit: string[] = [];
+      for (const [id, sh] of shapes) {
+        const big = sh.type === 'circle' ? sh.r : sh.type === 'ellipse' ? Math.max(sh.rx, sh.ry) : 0;
+        const pts =
+          sh.type === 'point' || sh.type === 'text'
+            ? [sh.at]
+            : sh.type === 'line'
+              ? [sh.a, sh.b]
+              : sh.type === 'circle' || sh.type === 'ellipse'
+                ? [{ x: sh.c.x - big, y: sh.c.y - big }, { x: sh.c.x + big, y: sh.c.y + big }]
+                : sh.type === 'polygon'
+                  ? sh.pts
+                  : [sh.a, sh.v, sh.c];
+        if (pts.every(inside)) hit.push(id);
+      }
+      setSel((cur) => (o.add ? [...new Set([...cur, ...hit])] : hit));
+      return;
+    }
+    if (o.kind === 'draw') {
+      if (o.tool === 'polygon') {
+        if (o.moved) pick(eventPt(e));
+        return;
+      }
+      if (o.moved) {
+        finishDraw(o.tool, o.start, o.cur);
+        setBoxStart(null);
+        return;
+      }
+      // a click: box tools take two clicks, the others pick as before
+      if (BOX_TOOLS.has(o.tool) && o.tool !== 'square') {
+        if (boxStart) {
+          finishDraw(o.tool, boxStart, o.start);
+          setBoxStart(null);
+        } else setBoxStart(o.start);
+        return;
+      }
+      pick(o.startScreen);
+    }
   };
+
   const finishStroke = (st: Pt[]) => {
     const r = recognize(st);
     if (!r) {
@@ -507,35 +976,38 @@ export function GeometryTool({ s, onSendToGraph }: { s: GeoStrings; onSendToGrap
       return;
     }
     let list = objects;
-    const pointAt = (sp: Pt, snap = true): string => {
-      const hit = hitPoint(sp);
-      if (hit) return hit;
+    const at = (sp: Pt, snap = true): string => {
       let id: string;
-      [list, id] = addPoint(list, snap ? snapped(toWorld(sp)) : toWorld(sp));
+      [list, id] = snap ? pointAt(list, snapAt(sp)) : addPoint(list, toWorld(sp));
       return id;
     };
     if (r.kind === 'segment') {
-      const [a, b] = [pointAt(r.a), pointAt(r.b)];
+      const [a, b] = [at(r.a), at(r.b)];
       if (a !== b) list = [...list, { id: newId(), kind: 'segment', name: lowerName(list), a, b }];
     } else if (r.kind === 'circle') {
-      const c = pointAt(r.c);
+      const c = at(r.c);
       // the drawn size, not the nearest grid step
-      const t = pointAt({ x: r.c.x + r.r, y: r.c.y }, false);
+      const t = at({ x: r.c.x + r.r, y: r.c.y }, false);
       list = [...list, { id: newId(), kind: 'circle', name: lowerName(list), center: c, through: t }];
     } else {
-      const pts = r.pts.map((p) => pointAt(p));
+      const pts = r.pts.map((p) => at(p));
       if (new Set(pts).size >= 3) list = [...list, { id: newId(), kind: 'polygon', name: lowerName(list), pts }];
     }
     commit(list);
   };
+  // scroll pans; Cmd/Ctrl + scroll (and a trackpad pinch) zooms about the cursor
   const onWheel = (e: RWheelEvent<SVGSVGElement>) => {
-    const sp = eventPt(e);
-    const before = toWorld(sp);
-    const s1 = Math.min(5000, Math.max(2, view.s * Math.exp(-e.deltaY * 0.0015)));
-    // keep the point under the cursor in place
-    setDoc((d) => ({ ...d, view: { s: s1, cx: before.x - (sp.x - size.w / 2) / s1, cy: before.y + (sp.y - size.h / 2) / s1 } }));
+    if (e.ctrlKey || e.metaKey) {
+      const sp = eventPt(e);
+      const before = toWorld(sp);
+      const rate = Math.abs(e.deltaY) < 40 ? 0.01 : 0.0015;
+      const s1 = Math.min(5000, Math.max(2, view.s * Math.exp(-e.deltaY * rate)));
+      setDoc((d) => ({ ...d, view: { s: s1, cx: before.x - (sp.x - size.w / 2) / s1, cy: before.y + (sp.y - size.h / 2) / s1 } }));
+    } else {
+      setDoc((d) => ({ ...d, view: { ...d.view, cx: d.view.cx + e.deltaX / d.view.s, cy: d.view.cy - e.deltaY / d.view.s } }));
+    }
   };
-  // the page must not scroll while zooming the canvas
+  // the page must not scroll or zoom while the canvas does
   useEffect(() => {
     const el = svgRef.current!;
     const stop = (e: WheelEvent) => e.preventDefault();
@@ -544,28 +1016,95 @@ export function GeometryTool({ s, onSendToGraph }: { s: GeoStrings; onSendToGrap
   }, []);
 
   const fit = () => {
-    const pts: Pt[] = [];
-    for (const sh of shapes.values()) {
-      if (sh.type === 'point') pts.push(sh.at);
-      if (sh.type === 'circle') pts.push({ x: sh.c.x - sh.r, y: sh.c.y - sh.r }, { x: sh.c.x + sh.r, y: sh.c.y + sh.r });
+    const b = figureBounds(objects, shapes, deco);
+    if (!b) return setDoc((d) => ({ ...d, view: START.view }));
+    const sc = Math.min(size.w / Math.max(1, b.x1 - b.x0), size.h / Math.max(1, b.y1 - b.y0)) * 0.75;
+    setDoc((d) => ({ ...d, view: { cx: (b.x0 + b.x1) / 2, cy: (b.y0 + b.y1) / 2, s: Math.min(400, Math.max(4, sc)) } }));
+  };
+
+  // ---- properties
+  const patchObjects = (ids: Set<string>, f: (o: GeoObject) => GeoObject) => commit(objects.map((o) => (ids.has(o.id) ? f(o) : o)));
+  const onProps = (patch: Partial<Record<keyof GeoProps, unknown>>) => {
+    if (!selSet.size) {
+      commit(objects, { ...defaults, ...(patch as Partial<GeoProps>) });
+      return;
     }
-    if (!pts.length) return setDoc((d) => ({ ...d, view: START.view }));
-    const [x0, x1] = [Math.min(...pts.map((p) => p.x)), Math.max(...pts.map((p) => p.x))];
-    const [y0, y1] = [Math.min(...pts.map((p) => p.y)), Math.max(...pts.map((p) => p.y))];
-    const sc = Math.min(size.w / Math.max(1, x1 - x0), size.h / Math.max(1, y1 - y0)) * 0.75;
-    setDoc((d) => ({ ...d, view: { cx: (x0 + x1) / 2, cy: (y0 + y1) / 2, s: Math.min(400, Math.max(4, sc)) } }));
+    patchObjects(selSet, (o) => {
+      const props = { ...o.props, ...patch } as Record<string, unknown>;
+      for (const k of Object.keys(props)) if (props[k] === undefined) delete props[k];
+      return { ...o, props: props as Partial<GeoProps> };
+    });
+  };
+  const onDeco = (id: string, change: (d: Deco) => Deco) => patchObjects(new Set([id]), (o) => ({ ...o, deco: change(o.deco ?? {}) }));
+  const onQuick = (a: QuickAction) => {
+    const ids = new Set((selSet.size ? selected : objects).map((o) => o.id));
+    patchObjects(ids, (o) => {
+      const props: Partial<GeoProps> = { ...o.props };
+      let next: Deco = { ...o.deco };
+      const clear = (list: Deco['sides'], only?: 'hidden') => list?.map((p) => (!only || p.label === only ? { ...p, label: undefined } : p));
+      if (a === 'lengths') {
+        if (o.kind === 'segment') props.segLabel = 'value';
+        if (o.kind === 'polygon' || o.kind === 'regular') {
+          props.sideLabel = 'value';
+          next = { ...next, sides: clear(next.sides, 'hidden') };
+        }
+      } else if (a === 'angles') {
+        if (o.kind === 'polygon' || o.kind === 'regular') {
+          props.cornerLabel = 'value';
+          next = { ...next, corners: clear(next.corners, 'hidden') };
+        }
+        if (o.kind === 'angle') props.angleLabel = 'value';
+      } else if (a === 'hide') {
+        Object.assign(props, { segLabel: 'hidden', sideLabel: 'hidden', cornerLabel: 'hidden', angleLabel: 'hidden', areaLabel: 'hidden', circleValue: 'hidden', pointLabel: false });
+        next = { ...next, sides: clear(next.sides), corners: clear(next.corners), text: o.kind === 'circle' || o.kind === 'compass' ? undefined : next.text };
+      } else {
+        next = { ...next, moved: undefined };
+      }
+      return { ...o, props, deco: next };
+    });
+  };
+  const onApplyPreset = (p: Preset, asDefault: boolean) => {
+    if (asDefault) commit(objects, { ...defaults, ...p.props });
+    else patchObjects(selSet, (o) => ({ ...o, props: { ...o.props, ...p.props } }));
+  };
+  const onSavePreset = (name: string) => {
+    const props = selSet.size ? { ...defaults, ...selected[0]!.props } : defaults;
+    const next = [...presets, { id: newId(), name, props }];
+    setPresets(next);
+    savePresets(next);
+  };
+  const onDeletePreset = (id: string) => {
+    const next = presets.filter((p) => p.id !== id);
+    setPresets(next);
+    savePresets(next);
+  };
+
+  // ---- export
+  const exportAs = async (kind: 'png2' | 'png4' | 'svg' | 'pdf' | 'copy') => {
+    setExportOpen(false);
+    const fig = figureSvg(objects, shapes, deco, { only: selSet.size ? [...selSet] : undefined, margin: doc.margin, exam: doc.exam });
+    if (!fig) return setNotice(s.nothingToExport);
+    const name = 'curvelet-figure';
+    try {
+      if (kind === 'svg') return download(new Blob([fig.svg], { type: 'image/svg+xml' }), `${name}.svg`);
+      const canvas = await svgToCanvas(fig.svg, fig.width, fig.height, kind === 'png2' ? 2 : 4);
+      if (kind === 'pdf') return download(await canvasToPdf(canvas, fig.width, fig.height), `${name}.pdf`);
+      const png = await canvasToPng(canvas);
+      if (kind === 'copy') {
+        const how = await copyFigure(png, fig.svg);
+        return setNotice(how === 'vector' ? s.copiedVector : s.copied);
+      }
+      download(png, `${name}@${kind === 'png2' ? 2 : 4}x.png`);
+    } catch {
+      setNotice(s.copyFailed);
+    }
   };
 
   // ---- drawing
-  const far = (size.w + size.h) / view.s * 4;
-  const lineEnds = (a: Pt, b: Pt, extent: 'segment' | 'line' | 'ray'): [Pt, Pt] => {
-    if (extent === 'segment') return [a, b];
-    const len = Math.hypot(b.x - a.x, b.y - a.y);
-    const d = { x: ((b.x - a.x) / len) * far, y: ((b.y - a.y) / len) * far };
-    return [extent === 'line' ? { x: a.x - d.x, y: a.y - d.y } : a, { x: b.x + d.x, y: b.y + d.y }];
-  };
+  const far = ((size.w + size.h) / view.s) * 4;
   const gridLines = () => {
     const out: ReactElement[] = [];
+    if (doc.exam) return out;
     const tl = toWorld({ x: 0, y: 0 });
     const br = toWorld({ x: size.w, y: size.h });
     const g = gridStep;
@@ -595,61 +1134,76 @@ export function GeometryTool({ s, onSendToGraph }: { s: GeoStrings; onSendToGrap
     }
     return out;
   };
+  const highlight = new Set([...selSet, ...picks]);
+  const figure = renderFigure({ objects, shapes, deco, toScreen, scale: view.s, far, highlight, interactive: true });
 
-  const highlight = (id: string) => (id === selected || picks.includes(id) || sel.includes(id) ? ' is-picked' : '');
-  const fills: ReactElement[] = [];
-  const strokes: ReactElement[] = [];
-  const dots: ReactElement[] = [];
-  const labels: ReactElement[] = [];
-  for (const o of objects) {
-    const sh = shapes.get(o.id);
-    if (!sh) continue;
-    const m = measure(sh);
-    if (sh.type === 'polygon') {
-      const pts = sh.pts.map(toScreen);
-      fills.push(<polygon key={o.id} className={`geo__poly${highlight(o.id)}`} points={pts.map((p) => `${p.x},${p.y}`).join(' ')} />);
-      const c = toScreen({ x: sh.pts.reduce((t, p) => t + p.x, 0) / sh.pts.length, y: sh.pts.reduce((t, p) => t + p.y, 0) / sh.pts.length });
-      if (m) labels.push(<text key={`${o.id}m`} className="geo__measure" x={c.x} y={c.y} textAnchor="middle">{m}</text>);
-    } else if (sh.type === 'line') {
-      const [a, b] = lineEnds(sh.a, sh.b, sh.extent).map(toScreen) as [Pt, Pt];
-      strokes.push(<line key={o.id} className={`geo__line${kindOfLine.has(o.kind) && o.kind !== 'segment' && o.kind !== 'line' && o.kind !== 'ray' ? ' geo__line--built' : ''}${highlight(o.id)}`} x1={a.x} y1={a.y} x2={b.x} y2={b.y} />);
-      if (m) {
-        const mid = toScreen({ x: (sh.a.x + sh.b.x) / 2, y: (sh.a.y + sh.b.y) / 2 });
-        labels.push(<text key={`${o.id}m`} className="geo__measure" x={mid.x + 6} y={mid.y - 6}>{m}</text>);
+  // the shape being drawn, dashed, with its size by the cursor
+  let preview: ReactElement | null = null;
+  let previewText: { text: string; at: Pt } | null = null;
+  const drawFrom = op?.kind === 'draw' && op.moved && op.tool !== 'polygon' ? { t: op.tool, a: op.start, b: op.cur } : boxStart && hover && BOX_TOOLS.has(tool) ? { t: tool, a: boxStart, b: snapAt(toScreen(hover)) } : null;
+  if (drawFrom) {
+    const made = draftOf(drawFrom.t, drawFrom.a.at, drawFrom.b.at, regular, fromCenter);
+    if (made) {
+      const d = made.draft;
+      if (d.kind === 'seg') {
+        const [a, b] = [toScreen(d.a), toScreen(d.b)];
+        preview = <line className="geo__draft" x1={a.x} y1={a.y} x2={b.x} y2={b.y} />;
+      } else if (d.kind === 'circle') {
+        const c = toScreen(d.c);
+        const e = toScreen(drawFrom.b.at);
+        preview = (
+          <g>
+            <circle className="geo__draft" cx={c.x} cy={c.y} r={d.r * view.s} />
+            <line className="geo__draft" x1={c.x} y1={c.y} x2={e.x} y2={e.y} />
+          </g>
+        );
+      } else if (d.kind === 'ellipse') {
+        const c = toScreen(d.c);
+        preview = <ellipse className="geo__draft" cx={c.x} cy={c.y} rx={d.rx * view.s} ry={d.ry * view.s} />;
+      } else {
+        preview = <polygon className="geo__draft" points={d.pts.map(toScreen).map((p) => `${p.x},${p.y}`).join(' ')} />;
       }
-    } else if (sh.type === 'circle') {
-      const c = toScreen(sh.c);
-      strokes.push(<circle key={o.id} className={`geo__circle${highlight(o.id)}`} cx={c.x} cy={c.y} r={sh.r * view.s} />);
-      if (m) labels.push(<text key={`${o.id}m`} className="geo__measure" x={c.x + sh.r * view.s * 0.7 + 4} y={c.y - sh.r * view.s * 0.7 - 4}>{m}</text>);
-    } else if (sh.type === 'angle') {
-      const v = toScreen(sh.v);
-      const r = 26;
-      const t1 = Math.atan2(-(sh.a.y - sh.v.y), sh.a.x - sh.v.x);
-      let t2 = Math.atan2(-(sh.c.y - sh.v.y), sh.c.x - sh.v.x);
-      let sweep = t2 - t1;
-      while (sweep <= -Math.PI) sweep += 2 * Math.PI;
-      while (sweep > Math.PI) sweep -= 2 * Math.PI;
-      t2 = t1 + sweep;
-      const p1 = { x: v.x + r * Math.cos(t1), y: v.y + r * Math.sin(t1) };
-      const p2 = { x: v.x + r * Math.cos(t2), y: v.y + r * Math.sin(t2) };
-      strokes.push(<path key={o.id} className={`geo__angle${highlight(o.id)}`} d={`M${v.x},${v.y} L${p1.x},${p1.y} A${r},${r} 0 0 ${sweep > 0 ? 1 : 0} ${p2.x},${p2.y} Z`} />);
-      const mid = t1 + sweep / 2;
-      labels.push(<text key={`${o.id}m`} className="geo__measure" x={v.x + (r + 16) * Math.cos(mid)} y={v.y + (r + 16) * Math.sin(mid) + 4} textAnchor="middle">{`${o.name} = ${m}`}</text>);
-    } else if (sh.type === 'point') {
-      const p = toScreen(sh.at);
-      dots.push(<circle key={o.id} className={`geo__pt${sh.free ? '' : ' geo__pt--built'}${highlight(o.id)}`} cx={p.x} cy={p.y} r={sh.free ? 5 : 4} />);
-      labels.push(<text key={`${o.id}n`} className="geo__name" x={p.x + 8} y={p.y - 8}>{o.name}</text>);
+      previewText = { text: made.readout, at: toScreen(drawFrom.b.at) };
     }
+  }
+  const shownReadout = readout ?? previewText;
+
+  // the selection's box: eight handles to resize, one above to turn
+  let handles: ReactElement | null = null;
+  if (tool === 'select' && selBox && (!op || op.kind === 'marquee')) {
+    const [a, b] = [toScreen({ x: selBox.x0, y: selBox.y1 }), toScreen({ x: selBox.x1, y: selBox.y0 })];
+    const pad = 6;
+    const [x0, y0, x1, y1] = [a.x - pad, a.y - pad, b.x + pad, b.y + pad];
+    const hs = coarse.current ? 16 : 9;
+    const at: Record<Handle, Pt> = { nw: { x: x0, y: y0 }, n: { x: (x0 + x1) / 2, y: y0 }, ne: { x: x1, y: y0 }, e: { x: x1, y: (y0 + y1) / 2 }, se: { x: x1, y: y1 }, s: { x: (x0 + x1) / 2, y: y1 }, sw: { x: x0, y: y1 }, w: { x: x0, y: (y0 + y1) / 2 } };
+    const cursorOf: Record<Handle, string> = { nw: 'nwse-resize', se: 'nwse-resize', ne: 'nesw-resize', sw: 'nesw-resize', n: 'ns-resize', s: 'ns-resize', e: 'ew-resize', w: 'ew-resize' };
+    handles = (
+      <g className="geo__bbox">
+        <rect className="geo__bbox-frame" x={x0} y={y0} width={x1 - x0} height={y1 - y0} />
+        <line className="geo__bbox-frame" x1={(x0 + x1) / 2} y1={y0} x2={(x0 + x1) / 2} y2={y0 - 20} />
+        <circle className="geo__handle geo__handle--rot" data-handle="rot" cx={(x0 + x1) / 2} cy={y0 - 24} r={hs / 2 + 1} style={{ cursor: 'grab' }} />
+        {HANDLES.map((h) => (
+          <rect key={h} className="geo__handle" data-handle={h} x={at[h].x - hs / 2} y={at[h].y - hs / 2} width={hs} height={hs} style={{ cursor: cursorOf[h] }} />
+        ))}
+      </g>
+    );
   }
 
   const needs = tool === 'polygon' ? null : NEEDS[tool];
   const stepsText = s.steps[tool];
-  const hint = message ?? stepsText[Math.min(tool === 'polygon' ? (picks.length ? 1 : 0) : picks.length, stepsText.length - 1)] ?? '';
+  const hint = message ?? stepsText[Math.min(tool === 'polygon' ? (picks.length ? 1 : 0) : BOX_TOOLS.has(tool) && boxStart ? 1 : picks.length, stepsText.length - 1)] ?? '';
   const describe = (o: GeoObject) => {
     const names = refs(o).map((r) => byId.get(r)?.name ?? '?');
     return names.length ? `${s.kinds[o.kind]} ${s.of(names.join(', '))}` : s.kinds[o.kind];
   };
-  const cursor = tool === 'move' ? (drag.current ? 'grabbing' : 'grab') : tool === 'select' ? 'default' : 'crosshair';
+  const cursor = op?.kind === 'pan' ? 'grabbing' : spaceDown || tool === 'move' ? 'grab' : tool === 'select' ? 'default' : 'crosshair';
+  const chooseTool = (id: GeoTool) => {
+    setTool(id);
+    setPicks([]);
+    setBoxStart(null);
+    setMessage(null);
+    if (id !== 'select' && id !== 'move') setSel([]);
+  };
 
   return (
     <div className="geo">
@@ -657,18 +1211,7 @@ export function GeometryTool({ s, onSendToGraph }: { s: GeoStrings; onSendToGrap
         {GROUPS.map((group, k) => (
           <div key={k} className="geo__group" role="group">
             {group.map((id) => (
-              <button
-                key={id}
-                type="button"
-                className="geo__tool"
-                aria-pressed={tool === id}
-                onClick={() => {
-                  setTool(id);
-                  setPicks([]);
-                  setMessage(null);
-                  if (id !== 'select') setSel([]);
-                }}
-              >
+              <button key={id} type="button" className="geo__tool" aria-pressed={tool === id} onClick={() => chooseTool(id)}>
                 {s.tools[id]}
               </button>
             ))}
@@ -680,26 +1223,20 @@ export function GeometryTool({ s, onSendToGraph }: { s: GeoStrings; onSendToGrap
             <input className="input input--code" type="number" min={3} max={60} value={sides} onChange={(e) => setSides(Math.max(3, Math.min(60, Math.round(Number(e.target.value) || 3))))} />
           </label>
         )}
-        {tool === 'select' && (
-          <div className="geo__selbar" role="group" aria-label={s.tools.select}>
-            <span className="geo__selcount" aria-live="polite">{s.selected(sel.length)}</span>
-            <button type="button" className="btn btn--small" onClick={() => setSel(objects.map((o) => o.id))} disabled={!objects.length}>
-              {s.selectAll}
-            </button>
-            <button type="button" className="btn btn--small" onClick={deleteSel} disabled={!sel.length}>
-              {s.deleteSelected}
-            </button>
-            <button type="button" className="btn btn--small btn--quiet" onClick={() => setSel([])} disabled={!sel.length}>
-              {s.clearSelection}
-            </button>
-          </div>
-        )}
         {tool === 'rotate' && (
           <label className="geo__deg">
             {s.degrees}
             <input className="input input--code" type="number" value={degrees} step={15} onChange={(e) => setDegrees(Number(e.target.value) || 0)} />°
           </label>
         )}
+        <div className="geo__group geo__locks" role="group">
+          <button type="button" className="geo__tool" aria-pressed={locks.regular} title="Shift" onClick={() => setLocks((l) => ({ ...l, regular: !l.regular }))}>
+            {s.regularShape}
+          </button>
+          <button type="button" className="geo__tool" aria-pressed={locks.center} title="Alt / Option" onClick={() => setLocks((l) => ({ ...l, center: !l.center }))}>
+            {s.fromCenter}
+          </button>
+        </div>
       </div>
 
       <div className="geo__body">
@@ -710,25 +1247,65 @@ export function GeometryTool({ s, onSendToGraph }: { s: GeoStrings; onSendToGrap
           </p>
           <svg
             ref={svgRef}
-            className="geo__svg"
+            className={`geo__svg${doc.exam ? ' geo__svg--exam' : ''}`}
             style={{ cursor }}
             tabIndex={0}
             aria-label={s.canvas}
             onPointerDown={onDown}
             onPointerMove={onMove}
             onPointerUp={onUp}
+            onPointerCancel={onUp}
             onPointerLeave={() => setHover(null)}
             onWheel={onWheel}
+            onContextMenu={(e) => {
+              e.preventDefault();
+              openMenu(eventPt(e));
+            }}
           >
             {gridLines()}
-            {fills}
-            {strokes}
+            {figure}
+            {preview}
             {stroke && <polyline className="geo__ink" points={stroke.map((p) => `${p.x},${p.y}`).join(' ')} />}
-            {dots}
-            {labels}
-            {box && <rect className="geo__box" x={Math.min(box.a.x, box.b.x)} y={Math.min(box.a.y, box.b.y)} width={Math.abs(box.b.x - box.a.x)} height={Math.abs(box.b.y - box.a.y)} />}
+            {snapMark?.kind && (
+              <g className="geo__snap">
+                <circle cx={toScreen(snapMark.at).x} cy={toScreen(snapMark.at).y} r={7} />
+                <text x={toScreen(snapMark.at).x + 10} y={toScreen(snapMark.at).y - 10}>
+                  {s.snapKinds[snapMark.kind]}
+                </text>
+              </g>
+            )}
+            {handles}
+            {op?.kind === 'marquee' && <rect className="geo__box" x={Math.min(op.a.x, op.b.x)} y={Math.min(op.a.y, op.b.y)} width={Math.abs(op.b.x - op.a.x)} height={Math.abs(op.b.y - op.a.y)} />}
           </svg>
+          {shownReadout && (
+            <span className="geo__cursor-readout" style={{ transform: `translate(${Math.round(shownReadout.at.x + 14)}px, ${Math.round(shownReadout.at.y + 14)}px)` }}>
+              {shownReadout.text}
+            </span>
+          )}
           {hover && <span className="geo__readout">({+hover.x.toFixed(2)}, {+hover.y.toFixed(2)})</span>}
+          {notice && (
+            <p className="geo__notice" role="status">
+              {notice}
+            </p>
+          )}
+          {menu && (
+            <ContextMenu
+              s={s}
+              at={menu}
+              hasSel={selSet.size > 0}
+              canPaste={Boolean(clipboard)}
+              onClose={() => setMenu(null)}
+              onProps={onProps}
+              onQuick={onQuick}
+              onDuplicate={() => duplicate()}
+              onCopy={() => {
+                clipboard = withAncestors(objects, selSet);
+              }}
+              onPaste={() => clipboard && duplicate(clipboard)}
+              onDelete={deleteSel}
+              onMore={() => setPanel('props')}
+            />
+          )}
         </section>
 
         <aside className="geo__side" aria-label={s.objects}>
@@ -755,24 +1332,93 @@ export function GeometryTool({ s, onSendToGraph }: { s: GeoStrings; onSendToGrap
               <input type="checkbox" checked={doc.snap} onChange={(e) => setDoc((d) => ({ ...d, snap: e.target.checked }))} />
               {s.snap}
             </label>
+            <label className="check">
+              <input type="checkbox" checked={doc.exam} onChange={(e) => setDoc((d) => ({ ...d, exam: e.target.checked }))} />
+              {s.examView}
+            </label>
             <button type="button" className="btn btn--small btn--quiet" onClick={fit}>
               {s.fit}
             </button>
+            <div className="geo__export">
+              <button type="button" className="btn btn--small" aria-expanded={exportOpen} onClick={() => setExportOpen((v) => !v)}>
+                {s.exportMenu}
+              </button>
+              {exportOpen && (
+                <div className="geo__export-menu" role="group" aria-label={s.exportMenu}>
+                  <p className="geo__export-scope">{selSet.size ? s.exportScopeSel : s.exportScopeAll}</p>
+                  <label className="geo__export-margin">
+                    {s.margin}
+                    <input className="input input--num" type="number" min={0} max={5} step={0.1} value={doc.margin} onChange={(e) => setDoc((d) => ({ ...d, margin: Math.max(0, Math.min(5, Number(e.target.value) || 0)) }))} />
+                  </label>
+                  <div className="geo__export-buttons">
+                    <button type="button" className="btn btn--small" onClick={() => exportAs('png2')}>
+                      {s.exportPng(2)}
+                    </button>
+                    <button type="button" className="btn btn--small" onClick={() => exportAs('png4')}>
+                      {s.exportPng(4)}
+                    </button>
+                    <button type="button" className="btn btn--small" onClick={() => exportAs('svg')}>
+                      {s.exportSvg}
+                    </button>
+                    <button type="button" className="btn btn--small" onClick={() => exportAs('pdf')}>
+                      {s.exportPdf}
+                    </button>
+                    <button type="button" className="btn btn--small btn--primary" onClick={() => exportAs('copy')}>
+                      {s.copyImage}
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
-          <h2 className="geo__heading">{s.objects}</h2>
-          {objects.length === 0 ? (
+
+          <div className="segmented geo__panel-tabs" role="group" aria-label={s.objects}>
+            <button type="button" aria-pressed={panel === 'objects'} onClick={() => setPanel('objects')}>
+              {s.objectsTab}
+            </button>
+            <button type="button" aria-pressed={panel === 'props'} onClick={() => setPanel('props')}>
+              {s.propertiesTab}
+            </button>
+          </div>
+
+          {panel === 'props' ? (
+            <PropertiesPanel
+              s={s}
+              selected={selected}
+              objects={objects}
+              shapes={shapes}
+              defaults={defaults}
+              onProps={onProps}
+              onDeco={onDeco}
+              onRename={(id, name) => patchObjects(new Set([id]), (o) => ({ ...o, name }))}
+              onQuick={onQuick}
+              presets={presets}
+              onApplyPreset={onApplyPreset}
+              onSavePreset={onSavePreset}
+              onDeletePreset={onDeletePreset}
+            />
+          ) : objects.length === 0 ? (
             <p className="geo__empty">{s.empty}</p>
           ) : (
             <ul className="geo__list">
               {objects.map((o) => {
                 const sh = shapes.get(o.id);
                 const m = sh ? measure(sh) : null;
+                const on = selSet.has(o.id);
                 return (
-                  <li key={o.id} className={`geo__item${o.id === selected ? ' is-selected' : ''}`}>
-                    <button type="button" className="geo__item-main" onClick={() => setSelected(o.id === selected ? null : o.id)} aria-pressed={o.id === selected}>
+                  <li key={o.id} className={`geo__item${on ? ' is-selected' : ''}`}>
+                    <button
+                      type="button"
+                      className="geo__item-main"
+                      onClick={(e) => {
+                        if (tool !== 'select' && tool !== 'move') setTool('select');
+                        setSel((cur) => (e.shiftKey || e.metaKey || e.ctrlKey ? (cur.includes(o.id) ? cur.filter((x) => x !== o.id) : [...cur, o.id]) : on && cur.length === 1 ? [] : [o.id]));
+                      }}
+                      aria-pressed={on}
+                    >
                       <span className="geo__item-name">{o.name}</span>
                       <span className="geo__item-kind">{describe(o)}</span>
-                      {m && <span className="geo__item-measure">{m}</span>}
+                      {m && !POINT_KINDS.has(o.kind) && <span className="geo__item-measure">{m}</span>}
                     </button>
                     <button type="button" className="icon-btn geo__item-delete" aria-label={s.remove(o.name)} onClick={() => commit(without(objects, new Set([o.id])))}>
                       <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
@@ -794,6 +1440,108 @@ export function GeometryTool({ s, onSendToGraph }: { s: GeoStrings; onSendToGrap
           </div>
         </aside>
       </div>
+    </div>
+  );
+}
+
+/** right-click or long-press: the common label settings and the edit commands */
+function ContextMenu({
+  s,
+  at,
+  hasSel,
+  canPaste,
+  onClose,
+  onProps,
+  onQuick,
+  onDuplicate,
+  onCopy,
+  onPaste,
+  onDelete,
+  onMore,
+}: {
+  s: GeoStrings;
+  at: Pt;
+  hasSel: boolean;
+  canPaste: boolean;
+  onClose: () => void;
+  onProps: (patch: Partial<Record<keyof GeoProps, unknown>>) => void;
+  onQuick: (a: QuickAction) => void;
+  onDuplicate: () => void;
+  onCopy: () => void;
+  onPaste: () => void;
+  onDelete: () => void;
+  onMore: () => void;
+}) {
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    ref.current?.querySelector('button')?.focus();
+  }, []);
+  const item = (label: string, run: () => void, disabled = false) => (
+    <button
+      type="button"
+      role="menuitem"
+      className="menu__item"
+      disabled={disabled}
+      onClick={() => {
+        run();
+        onClose();
+      }}
+    >
+      {label}
+    </button>
+  );
+  const chip = (label: string, run: () => void) => (
+    <button
+      type="button"
+      role="menuitem"
+      className="geo__chip"
+      onClick={() => {
+        run();
+        onClose();
+      }}
+    >
+      {label}
+    </button>
+  );
+  return (
+    <div
+      ref={ref}
+      className="geo__menu"
+      role="menu"
+      style={{ transform: `translate(${Math.round(at.x)}px, ${Math.round(at.y)}px)` }}
+      onKeyDown={(e) => {
+        if (e.key === 'Escape') onClose();
+        if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+          e.preventDefault();
+          const items = [...(ref.current?.querySelectorAll<HTMLButtonElement>('button:not(:disabled)') ?? [])];
+          const k = items.indexOf(document.activeElement as HTMLButtonElement);
+          items[(k + (e.key === 'ArrowDown' ? 1 : items.length - 1)) % items.length]?.focus();
+        }
+      }}
+    >
+      <p className="geo__menu-title">{s.format}</p>
+      <div className="geo__menu-row">
+        {chip(s.formats.auto!.split(' ')[0]!, () => onProps({ format: 'auto' }))}
+        {chip('9.07', () => onProps({ format: 'decimal' }))}
+        {chip('3√2', () => onProps({ format: 'radical' }))}
+        {chip('7/3', () => onProps({ format: 'fraction' }))}
+        {chip('4π', () => onProps({ format: 'pi' }))}
+      </div>
+      <p className="geo__menu-title">{s.ticks}</p>
+      <div className="geo__menu-row">{s.tickOptions.map((t, k) => <span key={k}>{chip(t, () => onProps({ ticks: k }))}</span>)}</div>
+      <p className="geo__menu-title">{s.arrows}</p>
+      <div className="geo__menu-row">{s.arrowOptions.map((t, k) => <span key={k}>{chip(t, () => onProps({ arrows: k }))}</span>)}</div>
+      <hr className="geo__menu-rule" />
+      {item(s.showLengths, () => onQuick('lengths'))}
+      {item(s.showAngles, () => onQuick('angles'))}
+      {item(s.hideLabels, () => onQuick('hide'))}
+      {item(s.resetLabels, () => onQuick('reset'))}
+      <hr className="geo__menu-rule" />
+      {item(s.duplicate, onDuplicate, !hasSel)}
+      {item(s.copy, onCopy, !hasSel)}
+      {item(s.paste, onPaste, !canPaste)}
+      {item(s.deleteSelected, onDelete, !hasSel)}
+      {item(s.moreProperties, onMore)}
     </div>
   );
 }
