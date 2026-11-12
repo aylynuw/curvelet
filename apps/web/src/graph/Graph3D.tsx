@@ -7,6 +7,7 @@ import { CSS2DObject, CSS2DRenderer } from 'three/examples/jsm/renderers/CSS2DRe
 import type { Strings } from '../i18n';
 import { cssToRgb } from './exportGraph';
 import { MathText } from '../components/MathText';
+import { saveBlob } from '../files/save';
 
 export type Surface = Extract<Graphable, { kind: 'surface' } | { kind: 'complex' }>;
 
@@ -205,10 +206,7 @@ export const Graph3D = forwardRef<
         },
         png: () => {
           render();
-          const a = document.createElement('a');
-          a.href = renderer.domElement.toDataURL('image/png');
-          a.download = 'graph-3d.png';
-          a.click();
+          renderer.domElement.toBlob((b) => b && void saveBlob(b, 'graph-3d.png'), 'image/png');
         },
         // arrow keys: turn around the vertical axis, or tilt
         rotate: (dAz, dEl) => {

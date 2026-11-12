@@ -13,6 +13,9 @@ tauri-build = { version = "2", features = [] }
 
 [dependencies]
 tauri = { version = "2", features = [] }
+# the native Save dialog for exports and project files
+tauri-plugin-dialog = "2"
+base64 = "0.22"
 
 [profile.release]
 # a smaller app: the work happens in the web view and the WebAssembly engine

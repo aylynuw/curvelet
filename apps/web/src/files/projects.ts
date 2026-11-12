@@ -7,6 +7,7 @@ import type { EvalSettings } from '@math/engine';
 import { cleanLine } from '../lines';
 import { newId, type LineData } from '../storage';
 import { listDocs } from './docs';
+import { saveBlob } from './save';
 
 export type ProjectTool = 'graph' | 'calc' | 'geo' | 'sheet';
 
@@ -141,13 +142,5 @@ export function readProjectFile(text: string, fallbackName: string): (ProjectDat
 
 export const projectFileName = (name: string) => `${name.trim().replace(/[\\/:*?"<>|]+/g, '-').slice(0, 60) || 'project'}.curvelet`;
 
-export function downloadText(text: string, name: string) {
-  const url = URL.createObjectURL(new Blob([text], { type: 'application/json' }));
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = name;
-  document.body.append(a);
-  a.click();
-  a.remove();
-  setTimeout(() => URL.revokeObjectURL(url), 1000);
-}
+/** saves a project file: a download in a browser, the Save dialog in the desktop app */
+export const downloadText = (text: string, name: string) => saveBlob(new Blob([text], { type: 'application/json' }), name);

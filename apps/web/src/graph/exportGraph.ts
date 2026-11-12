@@ -11,6 +11,7 @@ import {
   type Viewport,
 } from '@math/render';
 import type { Graphable } from '@math/engine';
+import { saveBlob } from '../files/save';
 
 /** The graph's colours and type, read from the page's CSS tokens. */
 export function readTheme(el: Element): DrawTheme {
@@ -34,16 +35,8 @@ export function readTheme(el: Element): DrawTheme {
   };
 }
 
-export function download(blob: Blob, name: string) {
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = name;
-  document.body.append(a);
-  a.click();
-  a.remove();
-  setTimeout(() => URL.revokeObjectURL(url), 1000);
-}
+/** saves the file: a download in a browser, the Save dialog in the desktop app */
+export const download = (blob: Blob, name: string) => saveBlob(blob, name);
 
 /**
  * Any CSS colour (the theme uses oklch) as sRGB, through a one-pixel canvas.

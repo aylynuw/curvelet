@@ -8,6 +8,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { renderFigure, COLOR_PAINT, EXAM_PAINT } from './figure';
 import type { Decorations } from './labels';
 import { withAncestors, type GeoObject, type Pt, type Shape } from './model';
+import { saveBlob } from '../files/save';
 
 /** an object's colour as a value a standalone SVG can use (palette slots read from the page's theme) */
 export function resolvedColor(c: string | undefined): string | undefined {
@@ -148,16 +149,8 @@ export async function canvasToPdf(canvas: HTMLCanvasElement, widthPx: number, he
   return new Blob(parts as BlobPart[], { type: 'application/pdf' });
 }
 
-export function download(blob: Blob, name: string) {
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = name;
-  document.body.append(a);
-  a.click();
-  a.remove();
-  setTimeout(() => URL.revokeObjectURL(url), 1000);
-}
+/** saves the file: a download in a browser, the Save dialog in the desktop app */
+export const download = (blob: Blob, name: string) => saveBlob(blob, name);
 
 /** the image on the clipboard: PNG always, the SVG beside it where the system takes vector images */
 export async function copyFigure(png: Blob, svg: string): Promise<'vector' | 'image'> {

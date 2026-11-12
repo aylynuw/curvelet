@@ -1702,7 +1702,18 @@ export function GeometryTool({ s, onSendToGraph }: { s: GeoStrings; onSendToGrap
   );
   const popover = (id: string, children: ReactElement | ReactElement[]) =>
     openMenu?.id === id && (
-      <div className="geo__pop" role="menu" style={{ transform: `translate(${Math.round(openMenu.x)}px, ${Math.round(openMenu.y)}px)` }}>
+      <div
+        className="geo__pop"
+        role="menu"
+        style={{ transform: `translate(${Math.round(openMenu.x)}px, ${Math.round(openMenu.y)}px)` }}
+        ref={(el) => {
+          // kept inside the window: a menu opened from a button near the right edge opens leftwards
+          if (!el) return;
+          const x = Math.max(8, Math.min(openMenu.x, window.innerWidth - el.offsetWidth - 8));
+          const y = Math.max(8, Math.min(openMenu.y, window.innerHeight - el.offsetHeight - 8));
+          el.style.transform = `translate(${Math.round(x)}px, ${Math.round(y)}px)`;
+        }}
+      >
         {children}
       </div>
     );
