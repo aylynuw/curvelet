@@ -5,8 +5,8 @@ import type { HistoryItem } from '../storage';
 import { MathText } from './MathText';
 import { NumberText } from './ResultView';
 
-export type Tab = 'lines' | 'definitions' | 'history' | 'functions' | 'practice';
-const TABS: Tab[] = ['lines', 'definitions', 'history', 'functions', 'practice'];
+export type Tab = 'lines' | 'definitions' | 'history' | 'functions' | 'practice' | 'tutorial';
+const TABS: Tab[] = ['lines', 'definitions', 'history', 'functions', 'practice', 'tutorial'];
 
 export function SidePanel({
   tab,
@@ -22,6 +22,7 @@ export function SidePanel({
   footer,
   practice,
   formulas,
+  tutorial,
 }: {
   tab: Tab;
   onTab: (tab: Tab) => void;
@@ -40,6 +41,8 @@ export function SidePanel({
   practice: ReactNode;
   /** the Formulas tab, with the function reference inside */
   formulas: ReactNode;
+  /** the Tutorial tab */
+  tutorial: ReactNode;
 }) {
   const tabRefs = useRef<Record<string, HTMLButtonElement | null>>({});
 
@@ -124,6 +127,7 @@ export function SidePanel({
         {tab === 'lines' && children}
         {tab === 'practice' && practice}
         {tab === 'functions' && formulas}
+        {tab === 'tutorial' && tutorial}
       </div>
       {footer}
     </section>

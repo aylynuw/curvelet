@@ -325,6 +325,16 @@ def _numeric_roots(f, v):
 
 def _solve_one(eq, v, cplx):
     V = T(v)
+    if eq.rel_op == '!=':
+        # x ≠ a: every real number except where the two sides are equal
+        same = solveset(Eq(eq.lhs, eq.rhs), v, S.Reals)
+        if same is S.EmptySet:
+            return {'special': 'all', 'display': ''}
+        if same == S.Reals:
+            return {'special': 'none', 'display': ''}
+        if isinstance(same, FiniteSet):
+            return {'display': ' and '.join(V + ' ≠ ' + T(e) for e in sorted(same, key=_sort_key))}
+        return {'display': _set_text(solveset(eq, v, S.Reals), v)}
     if eq.rel_op != '==':
         s = solveset(eq, v, S.Reals)
         if s is S.EmptySet:

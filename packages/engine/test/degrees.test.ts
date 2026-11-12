@@ -17,10 +17,20 @@ describe('degree sign and ≠', () => {
     expect(text('sin(30°)', 'deg')).toBe('0.5');
     expect(text('90°')).toBe(text('pi/2'));
   });
-  it('says plainly that ≠ is not supported instead of reading x! = 2', () => {
-    expect(text('x != 2')).toMatch(/≠/);
-    expect(text('x ≠ 2')).toMatch(/≠/);
-    expect(text('3! = 6')).not.toMatch(/≠/);
+  it('answers ≠ with known values true or false, and keeps 3! = 6 a factorial', () => {
+    expect(one('2 ≠ 3')).toEqual({ status: 'relation', holds: true });
+    expect(one('2 + 2 != 4')).toEqual({ status: 'relation', holds: false });
+    expect(one('[1, 2] ≠ [1, 3]')).toEqual({ status: 'relation', holds: true });
+    expect(one('3! = 6')).toEqual({ status: 'relation', holds: true });
+  });
+  it('leaves points out with {x ≠ a} and says why y ≠ x has no graph', () => {
+    const w = new Workspace();
+    w.set('1', 'y = 1/x {x ≠ 0}');
+    w.set('2', 'y ≠ x');
+    const g = w.graphables();
+    expect(g.find((v) => v.id === '1')).toMatchObject({ kind: 'curve' });
+    expect(g.find((v) => v.id === '2')).toBeUndefined();
+    expect(w.graphIssue('2')).toMatch(/every point except/);
   });
 });
 

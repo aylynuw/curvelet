@@ -12,7 +12,7 @@ export const PARENLESS_FUNCS = new Set([
   'ln', 'log', 'exp', 'sqrt', 'cbrt',
 ]);
 const TRIG = new Set(['sin', 'cos', 'tan', 'sec', 'csc', 'cot']);
-const REL_OPS = new Set(['=', '<', '>', '<=', '>=']);
+const REL_OPS = new Set(['=', '<', '>', '<=', '>=', '!=']);
 
 /** Parse one line of input. */
 export function parse(src: string): Statement {
@@ -208,8 +208,6 @@ class Parser {
         // 30°: degrees in either angle mode
         this.next();
         node = { type: 'call', name: 'degrees', args: [node], primes: 0 };
-      } else if (this.isOp('!=')) {
-        throw new MathError('≠ can’t be graphed or solved yet: use < or >, or solve(… = …)', this.peek().pos);
       } else return node;
     }
   }

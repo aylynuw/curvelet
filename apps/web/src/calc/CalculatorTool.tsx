@@ -41,7 +41,7 @@ const store = (key: string, value: unknown) => {
 };
 
 /** what a result shows, in the chosen format; null when it isn't an answer */
-function answer(r: Result | undefined): { text: string; exact?: string } | null {
+function answer(r: Result | undefined, t: Strings): { text: string; exact?: string } | null {
   if (!r) return null;
   if (r.status === 'value') {
     if (r.value.kind === 'num' && r.value.z.im === 0) {
@@ -51,7 +51,7 @@ function answer(r: Result | undefined): { text: string; exact?: string } | null 
     return { text: r.text, exact: r.exact };
   }
   if (r.status === 'symbolic' || r.status === 'solved') return { text: r.text };
-  if (r.status === 'relation') return { text: r.holds ? 'true' : 'false' };
+  if (r.status === 'relation') return { text: r.holds ? t.yes : t.no };
   return null;
 }
 const shown = (a: { text: string; exact?: string }, f: Format) => (f === 'exact' && a.exact ? a.exact : a.text);
@@ -105,7 +105,7 @@ export function CalculatorTool({
   ws.set('ans', last ? `ans = ${last.exact && /^-?\d+\/\d+$/.test(last.exact) ? `(${last.exact})` : last.text}` : '');
   ws.set('cur', input);
   const result = input.trim() ? ws.result('cur') : undefined;
-  const live = answer(result);
+  const live = answer(result, t);
 
   const commit = () => {
     if (!live || !input.trim()) return;

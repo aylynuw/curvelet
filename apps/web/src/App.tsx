@@ -99,6 +99,7 @@ const GeometryTool = lazy(() => import('./geo/GeometryTool').then((m) => ({ defa
 const WorksheetView = lazy(() => import('./teach/WorksheetView').then((m) => ({ default: m.WorksheetView })));
 const Practice = lazy(() => import('./learn/Practice').then((m) => ({ default: m.Practice })));
 const InkPanel = lazy(() => import('./ink/InkPanel').then((m) => ({ default: m.InkPanel })));
+const TutorialPanel = lazy(() => import('./tutorial/TutorialPanel'));
 const FormulasPanel = lazy(() => import('./formulas/FormulasPanel').then((m) => ({ default: m.FormulasPanel })));
 /** a line worth keeping: math, a table, a note or a folder */
 const hasContent = (l: Line) => !!l.source.trim() || l.note !== undefined || !!l.folder || !!l.table;
@@ -882,6 +883,11 @@ export function App() {
               taken={() => new Set(ws.definitions().map((d) => d.name))}
               onInsert={insertLines}
             />
+            </Suspense>
+          }
+          tutorial={
+            <Suspense fallback={null}>
+              <TutorialPanel lang={lang} onTry={insertLines} onOpenTool={setMode} />
             </Suspense>
           }
           practice={

@@ -41,7 +41,7 @@ export function toPython(node: Node, s: EvalSettings, op = 'this'): string {
     case 'tuple':
       throw new MathError(`Points can't be used inside ${op}`);
     case 'rel': {
-      const fn = { '=': 'Eq', '<': 'Lt', '>': 'Gt', '<=': 'Le', '>=': 'Ge' }[node.op];
+      const fn = { '=': 'Eq', '<': 'Lt', '>': 'Gt', '<=': 'Le', '>=': 'Ge', '!=': 'Ne' }[node.op];
       return `${fn}(${t(node.left)}, ${t(node.right)})`;
     }
     case 'list': {

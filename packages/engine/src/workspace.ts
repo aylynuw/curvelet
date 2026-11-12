@@ -508,7 +508,7 @@ export class Workspace {
       const eps = 1e-12;
       return (v: number[]) => {
         const diff = d(v);
-        return op === '<' ? diff < 0 : op === '<=' ? diff <= eps : op === '>' ? diff > 0 : op === '>=' ? diff >= -eps : Math.abs(diff) <= 1e-9;
+        return op === '<' ? diff < 0 : op === '<=' ? diff <= eps : op === '>' ? diff > 0 : op === '>=' ? diff >= -eps : op === '!=' ? Math.abs(diff) > 1e-9 : Math.abs(diff) <= 1e-9;
       };
     });
     const mask: Mask = (x, y, t) => {
@@ -674,6 +674,8 @@ export class Workspace {
     const ru = this.unknownNames(right);
     const all = new Set([...lu, ...ru]);
     if (all.size === 0 || [...all].some((n) => n !== 'x' && n !== 'y')) return null;
+    // every point but one curve: nothing useful to draw
+    if (stmt.op === '!=') throw new MathError('≠ is every point except the curve: graph the = line instead, or use {x ≠ a} to leave out a point');
 
     // y = f(x), f(x) < y, x = g(y): draw as a curve; anything else as F(x, y) = 0
     for (const v of ['y', 'x'] as const) {
@@ -1122,6 +1124,7 @@ function findCycles(deps: Map<string, string[]>): string[][] {
 
 function compare(op: RelOp, a: Value, b: Value): boolean {
   if (op === '=') return valuesEqual(a, b);
+  if (op === '!=') return !valuesEqual(a, b);
   if (a.kind !== 'num' || b.kind !== 'num') {
     throw new MathError(`${op} compares numbers, not ${kindName(a.kind !== 'num' ? a : b)}`);
   }

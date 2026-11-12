@@ -1,5 +1,5 @@
 export type BinaryOp = '+' | '-' | '*' | '/' | '^';
-export type RelOp = '=' | '<' | '>' | '<=' | '>=';
+export type RelOp = '=' | '<' | '>' | '<=' | '>=' | '!=';
 
 export type Node =
   /** base is set for 0b/0o/0x literals so results can be shown in that base */
