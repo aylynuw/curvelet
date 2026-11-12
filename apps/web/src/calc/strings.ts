@@ -39,7 +39,7 @@ const ko: CalcStrings = {
   tape: '이전 계산',
   emptyTape: '결과가 여기에 남습니다. 마지막 결과는 ans로 씁니다.',
   format: '표시',
-  exact: '정확한 값',
+  exact: '분수',
   decimal: '소수',
   ans: 'ans',
   ansLabel: '마지막 답 넣기',

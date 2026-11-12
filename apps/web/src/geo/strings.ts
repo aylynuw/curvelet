@@ -447,7 +447,7 @@ const ko: GeoStrings = {
   colourSlot: (n: number) => `색 ${n}`,
   colourPick: '원하는 색 고르기',
   colourHex: '색 코드',
-  notationExact: '정확한 값',
+  notationExact: '분수',
   notationDecimal: '소수',
   notationDoc: '문서',
   places: '자리',
