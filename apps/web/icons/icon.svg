@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
+  <!-- full bleed: app stores and Android mask it to their own shape; the wave sits in the middle 60% -->
+  <rect width="1024" height="1024" fill="#1c65c8"/>
+  <path d="M256 661c94 0 111-299 256-299s162 299 256 299" stroke="#fbfcfe" stroke-width="77" fill="none" stroke-linecap="round"/>
+</svg>

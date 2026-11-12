@@ -1,0 +1,11 @@
+node_modules
+dist
+.playwright-mcp
+apps/web/.hallmark/shots
+packages/cas/pyodide-dist
+apps/web/public/pyodide
+.claude/settings.local.json
+apps/desktop/src-tauri/target
+apps/desktop/src-tauri/gen
+.claude/
+.DS_Store

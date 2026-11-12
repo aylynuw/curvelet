@@ -1,0 +1,63 @@
+import type { Lang } from '../i18n';
+
+const en = {
+  settings: 'Settings',
+  files: 'Files',
+  close: 'Close',
+  language: 'Language',
+  theme: 'Theme',
+  keypad: 'On-screen keypad',
+  keypadOn: 'Show the keypad under the expression list',
+  settingsNote: 'Settings are kept in this browser.',
+  name: 'Name of this graph',
+  untitled: 'Untitled',
+  save: 'Save in this browser',
+  saved: (name: string) => `Saved “${name}”`,
+  saveFailed: 'This browser would not store it. Download a file instead.',
+  download: 'Download as a file',
+  open: 'Open a file…',
+  openFailed: 'That file isn’t a graph saved from this calculator.',
+  opened: (name: string) => `Opened “${name}”. Ctrl+Z brings back what was there.`,
+  newSheet: 'New graph',
+  started: 'Started a new graph. Ctrl+Z brings back the old one.',
+  savedList: 'Saved in this browser',
+  none: 'Nothing saved yet.',
+  openSaved: (name: string) => `Open ${name}`,
+  remove: (name: string) => `Delete ${name}`,
+  confirm: 'Delete for good?',
+  lines: (n: number) => `${n} line${n === 1 ? '' : 's'}`,
+  when: (d: Date) => d.toLocaleString('en', { dateStyle: 'medium', timeStyle: 'short' }),
+};
+
+export type FileStrings = typeof en;
+
+const ko: FileStrings = {
+  settings: '설정',
+  files: '파일',
+  close: '닫기',
+  language: '언어',
+  theme: '테마',
+  keypad: '화면 키패드',
+  keypadOn: '식 목록 아래에 키패드 보이기',
+  settingsNote: '설정은 이 브라우저에 저장됩니다.',
+  name: '이 그래프의 이름',
+  untitled: '제목 없음',
+  save: '이 브라우저에 저장',
+  saved: (name: string) => `“${name}” 저장했습니다`,
+  saveFailed: '이 브라우저에 저장할 수 없습니다. 파일로 내려받으세요.',
+  download: '파일로 내려받기',
+  open: '파일 열기…',
+  openFailed: '이 계산기에서 저장한 그래프 파일이 아닙니다.',
+  opened: (name: string) => `“${name}”을 열었습니다. Ctrl+Z로 이전 내용을 되돌릴 수 있습니다.`,
+  newSheet: '새 그래프',
+  started: '새 그래프를 시작했습니다. Ctrl+Z로 이전 그래프를 되돌릴 수 있습니다.',
+  savedList: '이 브라우저에 저장한 그래프',
+  none: '아직 저장한 그래프가 없습니다.',
+  openSaved: (name: string) => `${name} 열기`,
+  remove: (name: string) => `${name} 지우기`,
+  confirm: '정말 지울까요?',
+  lines: (n: number) => `${n}줄`,
+  when: (d: Date) => d.toLocaleString('ko', { dateStyle: 'medium', timeStyle: 'short' }),
+};
+
+export const FILES: Record<Lang, FileStrings> = { en, ko };

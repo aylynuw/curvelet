@@ -1,0 +1,14 @@
+{
+  "name": "@math/render",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "main": "src/index.ts",
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc -p ."
+  },
+  "dependencies": {
+    "@math/engine": "*"
+  }
+}

@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Curvelet</string>
+    <string name="title_activity_main">Curvelet</string>
+    <string name="package_name">com.curvelet.app</string>
+    <string name="custom_url_scheme">com.curvelet.app</string>
+</resources>

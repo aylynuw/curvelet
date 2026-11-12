@@ -1,0 +1,131 @@
+:root {
+  color-scheme: light;
+  /* scale */
+  --space-3xs: 2px; --space-2xs: 4px; --space-xs: 8px; --space-sm: 12px; --space-md: 16px; --space-lg: 24px; --space-xl: 32px; --space-2xl: 48px; --space-3xl: 64px;
+  --text-xs: 0.75rem; --text-sm: 0.8125rem; --text-md: 0.9375rem; --text-lg: 1.125rem; --text-xl: 1.25rem; --text-2xl: 1.75rem; --text-display: 2.5rem; --text-math: 1.1875rem;
+  --text-display: 1.125rem; --text-section: 1rem; --text-title: 0.9375rem; --text-lead: 1rem;
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1); --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+  --dur-micro: 120ms; --dur-short: 200ms;
+  --z-base: 1; --z-raised: 10; --z-dropdown: 100; --z-sticky: 200;
+  --radius-sm: 6px; --radius: 8px; --radius-lg: 12px; --radius-pill: 999px;
+  --rule-hair: 1px;
+  --control: 32px; --hit: 44px; --topbar: 52px; --panel: 26rem;
+  --font-body: "IBM Plex Sans", "Apple SD Gothic Neo", "Noto Sans KR", ui-sans-serif, system-ui, sans-serif;
+  --font-display: var(--font-body);
+  --font-code: "IBM Plex Mono", "Apple SD Gothic Neo", ui-monospace, monospace;
+  --font-math: "KaTeX_Main", "Times New Roman", serif;
+  --display-weight: 600; --tracking-display: -0.01em;
+
+  /* light */
+  --color-bg: oklch(97.6% 0.003 260);
+  --color-paper: oklch(100% 0 0);
+  --color-paper-2: oklch(97.6% 0.003 260);
+  --color-paper-3: oklch(94.8% 0.005 260);
+  --color-ink: oklch(23% 0.012 265);
+  --color-ink-2: oklch(36% 0.012 265);
+  --color-muted: oklch(50% 0.012 265);
+  --color-rule: oklch(90.5% 0.005 265);
+  --color-rule-2: oklch(94% 0.004 265);
+  /* the edge of a text field: 3:1 against the page */
+  --color-field-edge: oklch(60% 0.01 265);
+  --color-grid: oklch(23% 0.012 265 / 0.06);
+  --color-grid-2: oklch(23% 0.012 265 / 0.14);
+  --color-accent: oklch(52% 0.17 258);
+  --color-accent-2: oklch(46% 0.17 258);
+  --color-accent-soft: oklch(52% 0.17 258 / 0.1);
+  --color-accent-ink: oklch(99% 0.003 260);
+  --color-focus: oklch(55% 0.17 258);
+  --color-error: oklch(52% 0.19 27);
+  --color-error-soft: oklch(52% 0.19 27 / 0.08);
+  --color-success: oklch(48% 0.13 150);
+  --color-curve-1: oklch(55% 0.19 27);
+  --color-curve-2: oklch(52% 0.15 255);
+  --color-curve-3: oklch(55% 0.14 150);
+  --color-curve-4: oklch(50% 0.17 305);
+  --color-curve-5: oklch(64% 0.16 55);
+  --color-curve-6: oklch(55% 0.11 195);
+  --color-curve-7: oklch(55% 0.2 345);
+  --color-curve-8: oklch(32% 0.02 265);
+  --shadow-float: 0 1px 2px oklch(23% 0.012 265 / 0.06), 0 4px 14px oklch(23% 0.012 265 / 0.08);
+  --shadow-pressed: 0 1px 2px oklch(0% 0 0 / 0.12);
+  /* shade over the part of a photo that isn't being read */
+  --color-scrim: oklch(0% 0 0 / 0.35);
+  /* printed pages are black on white in either theme */
+  --sheet-paper: oklch(100% 0 0);
+  --sheet-ink: oklch(16% 0 0);
+  --sheet-muted: oklch(42% 0 0);
+  --sheet-rule: oklch(16% 0 0);
+  --sheet-rule-2: oklch(82% 0 0);
+  --sheet-shadow: 0 1px 3px oklch(0% 0 0 / 0.12), 0 8px 24px oklch(0% 0 0 / 0.10);
+  --shadow-menu: 0 2px 6px oklch(23% 0.012 265 / 0.08), 0 12px 32px oklch(23% 0.012 265 / 0.14);
+}
+
+/* dark: the system's choice unless the page says light, or chosen outright */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --color-bg: oklch(16% 0.006 265);
+    --color-paper: oklch(19.5% 0.007 265);
+    --color-paper-2: oklch(22.5% 0.008 265);
+    --color-paper-3: oklch(26.5% 0.009 265);
+    --color-ink: oklch(94% 0.004 265);
+    --color-ink-2: oklch(84% 0.006 265);
+    --color-muted: oklch(70% 0.01 265);
+    --color-rule: oklch(30% 0.008 265);
+    --color-rule-2: oklch(25.5% 0.008 265);
+    --color-field-edge: oklch(56% 0.01 265);
+    --color-grid: oklch(94% 0.004 265 / 0.06);
+    --color-grid-2: oklch(94% 0.004 265 / 0.15);
+    --color-accent: oklch(72% 0.13 255);
+    --color-accent-2: oklch(78% 0.11 255);
+    --color-accent-soft: oklch(72% 0.13 255 / 0.14);
+    --color-accent-ink: oklch(18% 0.02 260);
+    --color-focus: oklch(75% 0.13 255);
+    --color-error: oklch(74% 0.14 27);
+    --color-error-soft: oklch(74% 0.14 27 / 0.1);
+    --color-success: oklch(76% 0.14 150);
+    --color-curve-1: oklch(70% 0.17 27);
+    --color-curve-2: oklch(72% 0.13 250);
+    --color-curve-3: oklch(74% 0.14 150);
+    --color-curve-4: oklch(72% 0.14 305);
+    --color-curve-5: oklch(80% 0.14 70);
+    --color-curve-6: oklch(78% 0.11 195);
+    --color-curve-7: oklch(74% 0.17 345);
+    --color-curve-8: oklch(90% 0.01 265);
+    --shadow-float: 0 1px 2px oklch(0% 0 0 / 0.3), 0 4px 14px oklch(0% 0 0 / 0.3);
+    --shadow-menu: 0 2px 6px oklch(0% 0 0 / 0.35), 0 12px 32px oklch(0% 0 0 / 0.45);
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --color-bg: oklch(16% 0.006 265);
+  --color-paper: oklch(19.5% 0.007 265);
+  --color-paper-2: oklch(22.5% 0.008 265);
+  --color-paper-3: oklch(26.5% 0.009 265);
+  --color-ink: oklch(94% 0.004 265);
+  --color-ink-2: oklch(84% 0.006 265);
+  --color-muted: oklch(70% 0.01 265);
+  --color-rule: oklch(30% 0.008 265);
+  --color-rule-2: oklch(25.5% 0.008 265);
+  --color-field-edge: oklch(56% 0.01 265);
+  --color-grid: oklch(94% 0.004 265 / 0.06);
+  --color-grid-2: oklch(94% 0.004 265 / 0.15);
+  --color-accent: oklch(72% 0.13 255);
+  --color-accent-2: oklch(78% 0.11 255);
+  --color-accent-soft: oklch(72% 0.13 255 / 0.14);
+  --color-accent-ink: oklch(18% 0.02 260);
+  --color-focus: oklch(75% 0.13 255);
+  --color-error: oklch(74% 0.14 27);
+  --color-error-soft: oklch(74% 0.14 27 / 0.1);
+  --color-success: oklch(76% 0.14 150);
+  --color-curve-1: oklch(70% 0.17 27);
+  --color-curve-2: oklch(72% 0.13 250);
+  --color-curve-3: oklch(74% 0.14 150);
+  --color-curve-4: oklch(72% 0.14 305);
+  --color-curve-5: oklch(80% 0.14 70);
+  --color-curve-6: oklch(78% 0.11 195);
+  --color-curve-7: oklch(74% 0.17 345);
+  --color-curve-8: oklch(90% 0.01 265);
+  --shadow-float: 0 1px 2px oklch(0% 0 0 / 0.3), 0 4px 14px oklch(0% 0 0 / 0.3);
+  --shadow-menu: 0 2px 6px oklch(0% 0 0 / 0.35), 0 12px 32px oklch(0% 0 0 / 0.45);
+}

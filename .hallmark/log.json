@@ -1,0 +1,26 @@
+[
+ {
+  "scope": "app",
+  "shape": "app screen",
+  "theme": "blueprint",
+  "axes": "mid/geometric-sans/neutral",
+  "hero": "none (app)",
+  "nav": "top bar, wordmark, settings, tools",
+  "footer": "none (app)",
+  "imagery": "none",
+  "photos": [],
+  "entry": "worksheet register",
+  "fingerprint": "register-lines+side-tabs+keypad",
+  "sections": [
+   "topbar",
+   "register",
+   "side panel",
+   "keypad"
+  ],
+  "signature": "the worksheet register: numbered lines, expression column, result column",
+  "waived": [],
+  "prompt": "scientific calculator web app for students and teachers",
+  "date": "2026-11-11",
+  "mode": "build"
+ }
+]

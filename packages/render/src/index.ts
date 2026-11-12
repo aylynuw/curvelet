@@ -1,0 +1,14 @@
+export * from './viewport';
+export { sampleCurve, sampleParametric, curveRegions, contour, implicitRegion, type Polyline } from './sample';
+export { buildScene, coordinate, piLabel, piStep, planeAt, type Scene, type SceneOptions, type Style, type Label } from './scene';
+export { pointsOfInterest, curveAt, tidy, type Poi, type PoiKind } from './analysis';
+export { sceneToSvg } from './svg';
+export { sceneToPdf } from './pdf';
+export { sceneToTikz } from './tikz';
+export { drawScene } from './canvas';
+export { colourOf, domainColoring, type DomainImage } from './domain';
+export { parseHex, type Rgb } from './color';
+export { EXAM_THEME, mathRuns, type DrawTheme, type Run } from './theme';
+export { fieldMarks, solutionThrough, cobwebPath } from './fields';
+export { encodeGif } from './gif';
+export { dashPattern, type Look } from './look';

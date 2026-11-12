@@ -1,0 +1,22 @@
+{
+  "name": "@math/cas",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "main": "src/index.ts",
+  "scripts": {
+    "vendor": "node scripts/vendor-pyodide.mjs",
+    "pretest": "node scripts/vendor-pyodide.mjs",
+    "test": "vitest run",
+    "typecheck": "tsc -p ."
+  },
+  "dependencies": {
+    "@math/engine": "*",
+    "pyodide": "^314.0.7"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.6",
+    "typescript": "^7.0.2",
+    "vitest": "^5.1.0"
+  }
+}
