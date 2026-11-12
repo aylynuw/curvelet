@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useRef } from 'react';
-import { KNOWN_NAMES, latexToText, textToLatex } from '../math/latex';
+import { latexToText, textToLatex } from '../math/latex';
 import { useMathLive, type MathfieldElement } from '../math/mathlive';
 
 export type MoveOut = 'up' | 'down';
@@ -52,7 +52,7 @@ export function MathInput({
   const ml = useMathLive();
   useLayoutEffect(() => {
     if (!ml) return;
-    const { MathfieldElement, SHORTCUTS, WORD_SHORTCUTS } = ml;
+    const { MathfieldElement, SHORTCUTS, WORD_SHORTCUTS, FUNCTION_NAMES } = ml;
     const host = hostRef.current!;
     const mf = new MathfieldElement();
     mf.className = 'mathfield';
@@ -82,14 +82,16 @@ export function MathInput({
     let word = '';
     let pending: string | null = null;
     let timer: ReturnType<typeof setTimeout> | undefined;
-    const convert = () => {
+    /** the word just typed becomes its symbol; before a bracket, a function's name stays the function */
+    const convert = (key?: string) => {
       clearTimeout(timer);
       const w = pending;
       pending = null;
       word = '';
       if (!w || !mf.hasFocus()) return;
+      const latex = key === '(' && FUNCTION_NAMES.has(w) ? `\\operatorname{${w}}` : WORD_SHORTCUTS[w]!;
       for (let k = 0; k < w.length; k++) mf.executeCommand('deleteBackward');
-      mf.executeCommand(['insert', WORD_SHORTCUTS[w]!, { selectionMode: 'placeholder', format: 'latex' }]);
+      mf.executeCommand(['insert', latex, { selectionMode: 'placeholder', format: 'latex' }]);
     };
     const onKey = (e: KeyboardEvent) => {
       // typing a LaTeX command after \ (\int, \frac, \alpha): MathLive's own; Enter, Tab or space finish it
@@ -100,25 +102,29 @@ export function MathInput({
         return;
       }
       const letter = /^[a-zA-Z]$/.test(e.key) && !e.metaKey && !e.ctrlKey && !e.altKey;
-      if (pending) {
-        const continues = letter && KNOWN_NAMES.some((n) => n.length > pending!.length && n.startsWith(word + e.key));
-        if (!continues) {
-          const space = e.key === ' ';
-          convert();
-          // a space only asked for the symbol
-          if (space) {
-            e.preventDefault();
-            e.stopPropagation();
-            return;
-          }
+      const modifier = ['Shift', 'Alt', 'Meta', 'Control', 'CapsLock'].includes(e.key);
+      // editing or moving away isn't finishing the word: it stays as typed
+      if (/^(Backspace|Delete|Escape|Arrow|Home|End|Page)/.test(e.key)) {
+        clearTimeout(timer);
+        pending = null;
+      }
+      // a letter makes the word longer (index, total, integrate stay words); anything else ends it
+      if (pending && !letter && !modifier) {
+        const space = e.key === ' ';
+        convert(e.key);
+        // a space only asked for the symbol
+        if (space) {
+          e.preventDefault();
+          e.stopPropagation();
+          return;
         }
       }
       if (letter) {
         word += e.key;
         clearTimeout(timer);
         pending = WORD_SHORTCUTS[word] ? word : null;
-        if (pending) timer = setTimeout(convert, 700);
-      } else if (!['Shift', 'Alt', 'Meta', 'Control', 'CapsLock'].includes(e.key)) {
+        if (pending) timer = setTimeout(() => convert(), 900);
+      } else if (!modifier) {
         word = '';
       }
       if (e.key === '_') inSubscript = true;

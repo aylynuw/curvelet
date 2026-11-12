@@ -8,6 +8,7 @@ import {
   tokenize,
   type Token,
 } from '@math/engine';
+import { ACCENTS, BLACKBOARD, CHAR_LATEX, SYMBOL_CHARS, SYMBOL_CHAR_RE } from './symbols';
 
 /**
  * The calculator keeps each line as plain text (`let f(x) = x^2/3`); the
@@ -18,13 +19,14 @@ import {
 
 const GREEK = [
   'alpha', 'beta', 'gamma', 'delta', 'epsilon', 'varepsilon', 'zeta', 'eta', 'theta', 'vartheta', 'iota', 'kappa', 'lambda', 'mu', 'nu',
-  'xi', 'omicron', 'rho', 'sigma', 'upsilon', 'phi', 'varphi', 'chi', 'psi', 'omega',
-  'Gamma', 'Delta', 'Theta', 'Lambda', 'Xi', 'Sigma', 'Phi', 'Psi', 'Omega',
+  'xi', 'omicron', 'rho', 'sigma', 'upsilon', 'phi', 'varphi', 'chi', 'psi', 'omega', 'varkappa', 'varpi', 'varrho', 'varsigma',
+  'Gamma', 'Delta', 'Theta', 'Lambda', 'Xi', 'Pi', 'Sigma', 'Upsilon', 'Phi', 'Psi', 'Omega',
 ];
 const GREEK_CHAR: Record<string, string> = {
   alpha: 'α', beta: 'β', gamma: 'γ', delta: 'δ', epsilon: 'ε', varepsilon: 'ε', zeta: 'ζ', eta: 'η', theta: 'θ', vartheta: 'ϑ', iota: 'ι',
   kappa: 'κ', lambda: 'λ', mu: 'μ', nu: 'ν', xi: 'ξ', omicron: 'ο', rho: 'ρ', sigma: 'σ', upsilon: 'υ', phi: 'φ', varphi: 'φ', chi: 'χ',
   psi: 'ψ', omega: 'ω', Gamma: 'Γ', Delta: 'Δ', Theta: 'Θ', Lambda: 'Λ', Xi: 'Ξ', Sigma: 'Σ', Phi: 'Φ', Psi: 'Ψ', Omega: 'Ω',
+  varkappa: 'ϰ', varpi: 'ϖ', varrho: 'ϱ', varsigma: 'ς', Pi: 'Π', Upsilon: 'Υ',
 };
 const CHAR_GREEK: Record<string, string> = Object.fromEntries(Object.entries(GREEK_CHAR).map(([k, v]) => [v, k]));
 
@@ -51,6 +53,7 @@ const LATEX_OPERATORS = new Set([
 // ---------------------------------------------------------------- text → LaTeX
 
 function nameTex(name: string): string {
+  if (CHAR_LATEX[name]) return `${CHAR_LATEX[name]} `;
   if (name === 'pi') return '\\pi';
   if (name === 'tau') return '\\tau';
   if (name === 'inf') return '\\infty';
@@ -93,6 +96,7 @@ const TYPESET: Record<string, (args: string[], rest: Token[]) => string | null> 
   nCr: ([n, r, ...more]) => (n !== undefined && r !== undefined && more.length === 0 ? `\\binom{${n}}{${r}}` : null),
   root: ([x, n, ...more]) => (x !== undefined && n !== undefined && more.length === 0 ? `\\sqrt[${n}]{${x}}` : null),
   // sum(seq(f, n, a, b)) is Σ; sum of a list stays sum([…])
+  ...Object.fromEntries(ACCENTS.map((a) => [a, ([x, ...more]: string[]) => (x !== undefined && !more.length ? `\\${a}{${x}}` : null)])),
   sum: (args, rest) => bigOperator('\\sum', args, rest),
   prod: (args, rest) => bigOperator('\\prod', args, rest),
 };
@@ -136,6 +140,14 @@ export function textToLatex(text: string, { display = false }: { display?: boole
   try {
     tokens = tokenize(text);
   } catch {
+    // ≈, ∈, → and the like: each piece between them converted on its own, the symbols as their commands
+    if (SYMBOL_CHAR_RE.test(text)) {
+      return text
+        .split(SYMBOL_CHAR_RE)
+        .map((part) => (CHAR_LATEX[part] ? `${CHAR_LATEX[part]} ` : part.trim() ? textToLatex(part, { display }) : ''))
+        .join('')
+        .trim();
+    }
     return `\\text{${text.replace(/[\\{}$&#^_%~]/g, (c) => `\\${c}`)}}`;
   }
   let i = 0;
@@ -635,6 +647,21 @@ function convert(latex: string): Piece[] {
       push(SYMBOL[t]!, 'op');
       continue;
     }
+    if (t === '\\mathbb' || t === '\\Bbb') {
+      const letter = r.arg().trim();
+      push(BLACKBOARD[letter] ?? letter, 'cmd');
+      continue;
+    }
+    if (t.startsWith('\\') && ACCENTS.includes(t.slice(1))) {
+      push(`${t.slice(1)}(${toText(r.arg())})`, 'cmd');
+      continue;
+    }
+    if (t.startsWith('\\') && SYMBOL_CHARS[t.slice(1)]) {
+      const ch = SYMBOL_CHARS[t.slice(1)]!;
+      // ℓ, ℏ, ℜ are letters to the lexer (names); ≈, ∈, → stand between things
+      push(ch, /\p{L}/u.test(ch) ? 'cmd' : 'op');
+      continue;
+    }
     if (t.startsWith('\\')) {
       const name = t.slice(1);
       if (GREEK_CHAR[name]) push(GREEK_CHAR[name]!, 'cmd');
@@ -684,6 +711,9 @@ function toText(latex: string): string {
   return join(convert(latex)).replace(/\s+/g, ' ').trim();
 }
 
+/** relations, arrows and set operators are written with a space each side, like = */
+const SPACED = new Set([...'≈≡∼≃≅∝≪≫≺≻∈∉∋⊂⊃⊆⊇⊥∥→←↔⇒⇐⇔↦⟶⟵±∓∪∩∖∧∨⊕⊖⊗⊙∘⋆']);
+
 /** Spaces around = < > and binary + −, after commas: how the worksheet has always written lines. */
 function tidy(text: string): string {
   let out = '';
@@ -697,7 +727,7 @@ function tidy(text: string): string {
       continue;
     }
     const c = text[k]!;
-    if (c === '=' || c === '<' || c === '>' || c === '≠') {
+    if (c === '=' || c === '<' || c === '>' || c === '≠' || SPACED.has(c)) {
       out = `${out.trimEnd()} ${c} `;
     } else if (c === ',') {
       out = `${out.trimEnd()}, `;
