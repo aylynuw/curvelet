@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { checkAnswer, makeProblem, problemSteps, TEMPLATES } from '../src';
+import { checkAnswer, levelTopics, makeProblem, nextProblem, problemSteps, TEMPLATES } from '../src';
 
 describe('practice problems', () => {
   for (const name of Object.keys(TEMPLATES)) {
@@ -7,11 +7,35 @@ describe('practice problems', () => {
       for (let seed = 1; seed <= 50; seed++) {
         const p = makeProblem(name, seed);
         expect(checkAnswer(p, p.answer), `${p.question} → ${p.answer}`).toEqual({ correct: true });
-        const wrong = p.topic === 'equation' ? p.answer.replace(/-?\d+$/, (d) => String(Number(d) + 1)) : `2(${p.answer.replace(/\+ C$/, '')}) + x`;
+        const wrong =
+          p.value !== undefined
+            ? String(p.value + 1)
+            : p.topic === 'equation'
+              ? p.answer.replace(/-?\d+$/, (d) => String(Number(d) + 1))
+              : `2(${p.answer.replace(/\+ C$/, '')}) + x`;
         expect(checkAnswer(p, wrong).correct, `${p.question} ✗ ${wrong}`).toBe(false);
       }
     });
   }
+
+  it('exam problems: whole-number answers, 2 to 4 points, and working in both languages', () => {
+    for (const name of Object.keys(TEMPLATES).filter((n) => n.startsWith('exam-'))) {
+      for (let seed = 1; seed <= 200; seed++) {
+        const p = makeProblem(name, seed);
+        expect(Number.isInteger(p.value), `${name} ${seed}: ${p.value}`).toBe(true);
+        expect(Math.abs(p.value!)).toBeLessThan(1000);
+        expect([2, 3, 4]).toContain(p.points);
+        expect(p.solution!.en.length).toBe(p.solution!.ko.length);
+        expect(p.prompt!.ko).toMatch(/\$\$/);
+        expect(p.prompt!.en + p.solution!.en.join('')).not.toMatch(/undefined|NaN|\+ -|- -/);
+      }
+    }
+  });
+
+  it('every level offers problems on each of its topics', () => {
+    for (const level of ['basic', 'advanced', 'exam'] as const)
+      for (const topic of levelTopics(level)) for (let k = 0; k < 20; k++) expect(nextProblem(topic, Math.random, level).topic).toBe(topic);
+  });
 
   it('makes the same problem from the same seed', () => {
     expect(makeProblem('derivative-chain', 7)).toEqual(makeProblem('derivative-chain', 7));

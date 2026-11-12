@@ -96,8 +96,7 @@ function Segmented<T extends string>({
 
 const CalculatorTool = lazy(() => import('./calc/CalculatorTool').then((m) => ({ default: m.CalculatorTool })));
 const GeometryTool = lazy(() => import('./geo/GeometryTool').then((m) => ({ default: m.GeometryTool })));
-const WorksheetView = lazy(() => import('./teach/WorksheetView').then((m) => ({ default: m.WorksheetView })));
-const Practice = lazy(() => import('./learn/Practice').then((m) => ({ default: m.Practice })));
+const StudyTool = lazy(() => import('./teach/StudyTool').then((m) => ({ default: m.StudyTool })));
 const InkPanel = lazy(() => import('./ink/InkPanel').then((m) => ({ default: m.InkPanel })));
 const TutorialPanel = lazy(() => import('./tutorial/TutorialPanel'));
 const FormulasPanel = lazy(() => import('./formulas/FormulasPanel').then((m) => ({ default: m.FormulasPanel })));
@@ -842,15 +841,25 @@ export function App() {
         </main>
       ) : mode === 'sheet' ? (
         <main className="workspace workspace--sheet">
-          <WorksheetView
+          <StudyTool
             sheet={sheet}
-            onChange={setSheet}
+            setSheet={setSheet}
             s={teach}
             learn={learn}
             lang={lang}
             settings={settings}
             resolver={resolver}
             onAnswer={onAnswer}
+            askIntegral={askIntegral}
+            keyboard={keyboard}
+            fieldRef={(el) => {
+              if (el) inputs.current.set(PRACTICE, el);
+              else inputs.current.delete(PRACTICE);
+            }}
+            onFocusField={() => {
+              lastFocused.current = PRACTICE;
+            }}
+            onNotice={(text) => setNotice({ text })}
             calculatorLines={() => linesRef.current.map((l) => l.source).filter((src) => src.trim())}
           />
         </main>
@@ -888,24 +897,6 @@ export function App() {
           tutorial={
             <Suspense fallback={null}>
               <TutorialPanel lang={lang} onTry={insertLines} onOpenTool={setMode} />
-            </Suspense>
-          }
-          practice={
-            <Suspense fallback={null}>
-            <Practice
-              s={learn}
-              settings={settings}
-              keyboard={keyboard}
-              fieldRef={(el) => {
-                if (el) inputs.current.set(PRACTICE, el);
-                else inputs.current.delete(PRACTICE);
-              }}
-              onFocusField={() => {
-                lastFocused.current = PRACTICE;
-              }}
-              askIntegral={askIntegral}
-              onAnswer={onAnswer}
-            />
             </Suspense>
           }
           footer={

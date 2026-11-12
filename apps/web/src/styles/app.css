@@ -312,6 +312,22 @@ sup { font-size: 0.7em; line-height: 0; }
 .practice__answer { font-size: var(--text-sm); }
 .practice__answer .tex { font-size: var(--text-md); }
 .practice__score { font-size: var(--text-sm); color: var(--color-muted); }
+.practice__choose { display: flex; flex-wrap: wrap; gap: var(--space-xs); }
+.practice__points { font-weight: 600; color: var(--color-ink); }
+.practice__prompt { padding: var(--space-xs) 0 var(--space-sm); font-size: var(--text-md); line-height: 1.9; max-width: 62ch; word-break: keep-all; overflow-wrap: break-word; overflow-x: auto; }
+.practice__prompt .tex { font-size: 1.15em; }
+.practice__solution { padding: var(--space-sm) var(--space-md); border-radius: var(--radius); background: var(--color-paper-2); }
+.practice__solution-title { margin: 0 0 var(--space-xs); font-size: var(--text-sm); font-weight: 600; }
+.practice__solution ol { margin: 0; padding-left: var(--space-md); display: flex; flex-direction: column; gap: var(--space-2xs); font-size: var(--text-sm); line-height: 1.8; word-break: keep-all; overflow-wrap: break-word; }
+.practice__sheet { display: flex; flex-wrap: wrap; gap: var(--space-xs); padding-top: var(--space-xs); border-top: var(--rule-hair) solid var(--color-rule); }
+
+/* ---------- study: practice and the worksheet ---------- */
+.study { display: flex; flex-direction: column; height: 100%; min-height: 0; }
+.study__bar { flex: none; display: flex; align-items: center; padding: var(--space-xs) var(--space-md); border-bottom: var(--rule-hair) solid var(--color-rule); }
+.study__bar .segmented button { display: inline-flex; align-items: center; gap: var(--space-2xs); }
+.study > .ws { flex: 1; min-height: 0; height: auto; }
+.study__practice { flex: 1; min-height: 0; overflow-y: auto; }
+.study__practice .practice { max-width: 46rem; margin: 0 auto; padding: var(--space-lg) var(--space-md) var(--space-2xl); }
 
 /* ---------- worksheet builder ---------- */
 .workspace--sheet { display: block; min-height: 0; }
@@ -356,6 +372,7 @@ textarea.input { resize: vertical; line-height: 1.5; }
 .ws-add { display: flex; }
 .ws-generate { display: grid; grid-template-columns: minmax(0, 1fr) 5rem; gap: var(--space-xs); align-items: end; padding: var(--space-sm); border-radius: var(--radius); background: var(--color-paper-2); }
 .ws-generate .btn { grid-column: 1 / -1; justify-self: start; }
+.ws-generate > :first-child { grid-column: 1 / -1; }
 
 .ws-preview { min-width: 0; min-height: 0; overflow: auto; padding: var(--space-md); background: var(--color-bg); }
 .ws-pages { display: flex; flex-direction: column; align-items: center; gap: var(--space-lg); }
@@ -399,8 +416,8 @@ textarea.input { resize: vertical; line-height: 1.5; }
 /* printing: only the pages, at their real size */
 @media print {
   html, body, #root, .app { height: auto !important; background: var(--sheet-paper) !important; }
-  .topbar, .notice, .ws-editor, .ws-measure { display: none !important; }
-  .workspace--sheet, .ws, .ws-preview { display: block !important; padding: 0 !important; margin: 0 !important; overflow: visible !important; background: none !important; }
+  .topbar, .notice, .ws-editor, .ws-measure, .study__bar { display: none !important; }
+  .workspace--sheet, .study, .ws, .ws-preview { display: block !important; padding: 0 !important; margin: 0 !important; overflow: visible !important; background: none !important; }
   .ws-pages { zoom: 1 !important; gap: 0 !important; display: block !important; }
   .ws-page { box-shadow: none !important; break-after: page; page-break-after: always; margin: 0 auto !important; }
   .ws-page:last-child { break-after: auto; page-break-after: auto; }
@@ -560,6 +577,9 @@ textarea.input { resize: vertical; line-height: 1.5; }
 .geo__name { fill: var(--color-ink); font-family: var(--font-math); font-style: italic; font-size: 15px; paint-order: stroke; stroke: var(--color-paper); stroke-width: 3px; }
 .geo__measure { fill: var(--color-ink-2); font-family: var(--font-body); font-size: 12px; font-variant-numeric: tabular-nums; paint-order: stroke; stroke: var(--color-paper); stroke-width: 3px; }
 .geo__ink { fill: none; stroke: var(--color-ink-2); stroke-width: 2.5; stroke-linecap: round; stroke-linejoin: round; }
+.geo__box { fill: var(--color-accent-soft); stroke: var(--color-accent); stroke-width: 1; stroke-dasharray: 4 3; }
+.geo__selbar { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2xs); }
+.geo__selcount { font-size: var(--text-sm); color: var(--color-muted); padding-right: var(--space-2xs); }
 .geo__side { min-height: 0; overflow: auto; display: flex; flex-direction: column; gap: var(--space-sm); padding: var(--space-sm); background: var(--color-paper); border-left: var(--rule-hair) solid var(--color-rule-2); }
 .geo__actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2xs) var(--space-sm); }
 .geo__heading { margin: 0; font-size: var(--text-sm); font-weight: 600; color: var(--color-ink); }

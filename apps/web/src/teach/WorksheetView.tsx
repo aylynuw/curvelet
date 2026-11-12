@@ -1,11 +1,11 @@
 import type { EvalSettings, SymbolicResolver } from '@math/engine';
-import { makeProblem, TOPIC_TEMPLATES, type Topic } from '@math/steps';
+import { levelTopics, type Level, type Topic } from '@math/steps';
 import { useEffect, useLayoutEffect, useReducer, useRef, useState, type ReactNode } from 'react';
 import type { Lang } from '../i18n';
-import { questionTex } from '../learn/Practice';
 import type { LearnStrings } from '../learn/strings';
 import { Pages } from './Pages';
 import type { TeachStrings } from './strings';
+import { generateProblems } from './fromPractice';
 import { FIGURE_TEMPLATES } from './templates';
 import { blankProblem, newId, PAPER, PX_PER_MM, type Figure, type Paper, type Problem, type Worksheet } from './worksheet';
 
@@ -73,21 +73,10 @@ export function WorksheetView({
     return () => style.remove();
   }, [sheet.paper]);
 
-  const [genTopic, setGenTopic] = useState<Topic>('derivative');
+  const [genLevel, setGenLevel] = useState<Level>('exam');
+  const [genTopic, setGenTopic] = useState<Topic>('calculus');
   const [genCount, setGenCount] = useState(4);
-  const generate = () => {
-    const made: Problem[] = Array.from({ length: genCount }, () => {
-      const list = TOPIC_TEMPLATES[genTopic];
-      const p = makeProblem(list[Math.floor(Math.random() * list.length)]!, Math.floor(Math.random() * 2 ** 31));
-      return {
-        ...blankProblem(),
-        text: `${learn.task[p.topic]} $$${questionTex(p)}$$`,
-        answer: `$${p.answer}$`,
-        space: p.topic === 'equation' ? 5 : 4,
-      };
-    });
-    set({ problems: [...sheet.problems, ...made] });
-  };
+  const generate = () => set({ problems: [...sheet.problems, ...generateProblems(genLevel, genTopic, genCount, lang, learn)] });
 
   const addProblem = () => {
     const p = blankProblem();
@@ -194,9 +183,26 @@ export function WorksheetView({
             </button>
           </div>
           <div className="ws-generate" role="group" aria-label={s.generate}>
+            <Field label={s.generateLevel}>
+              <select
+                className="input"
+                value={genLevel}
+                onChange={(e) => {
+                  const l = e.target.value as Level;
+                  setGenLevel(l);
+                  if (!levelTopics(l).includes(genTopic)) setGenTopic(levelTopics(l)[0]!);
+                }}
+              >
+                {(['basic', 'advanced', 'exam'] as Level[]).map((l) => (
+                  <option key={l} value={l}>
+                    {learn.levels[l]}
+                  </option>
+                ))}
+              </select>
+            </Field>
             <Field label={s.generateTopic}>
               <select className="input" value={genTopic} onChange={(e) => setGenTopic(e.target.value as Topic)}>
-                {(Object.keys(TOPIC_TEMPLATES) as Topic[]).map((t) => (
+                {levelTopics(genLevel).map((t) => (
                   <option key={t} value={t}>
                     {learn.topics[t]}
                   </option>

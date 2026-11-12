@@ -1,10 +1,14 @@
 import { compileReal, DEFAULT_SETTINGS, EMPTY_ENV, evaluate, parse, parseExpression, printNode, type Node } from '@math/engine';
-import { call, id, mul, num, pow, tidy } from './ast';
+import { add, call, div, id, mul, num, pow, tidy } from './ast';
 import { diffSteps } from './derivative';
+import { EXAM_TEMPLATES, type Unit } from './exam';
 import { solveSteps } from './equation';
 import { polyNode, Q, toPoly, type Poly } from './rational';
 
-export type Topic = 'derivative' | 'equation' | 'integral';
+/** derivative, equation and integral drill; algebra (수학Ⅰ) and calculus (수학Ⅱ) are the exam units */
+export type Topic = 'derivative' | 'equation' | 'integral' | Unit;
+/** basic drill, harder drill, and exam-style (평가원) problems */
+export type Level = 'basic' | 'advanced' | 'exam';
 
 /**
  * A practice problem. `question` is what is shown (a calculator line:
@@ -21,6 +25,11 @@ export interface Problem {
   answer: string;
   /** the solutions, for equations */
   solutions?: number[];
+  /** exam problems: the sentence to show, the whole-number answer, the points and the working */
+  prompt?: { en: string; ko: string };
+  value?: number;
+  points?: number;
+  solution?: { en: string[]; ko: string[] };
 }
 
 export type Verdict =
@@ -53,8 +62,13 @@ const text = (n: Node) => printNode(tidy(n));
 
 interface Template {
   topic: Topic;
-  make(r: ReturnType<typeof rng>): { target: Node[]; question: string; answer: string; solutions?: number[] };
+  make(r: ReturnType<typeof rng>): Omit<Problem, 'topic' | 'template' | 'seed'>;
 }
+const integral = (f: Node, F: Node) => ({ target: [f], question: `integrate(${printNode(f)}, x)`, answer: `${text(F)} + C` });
+const roots = (sols: Q[]) => {
+  const uniq = sols.filter((q, k) => sols.findIndex((w) => w.eq(q)) === k).sort((p, q) => p.value - q.value);
+  return { answer: uniq.map((q) => `x = ${printNode(q.node())}`).join(', '), solutions: uniq.map((q) => q.value) };
+};
 
 const derivative = (f: Node) => ({
   target: [f],
@@ -158,13 +172,126 @@ export const TEMPLATES: Record<string, Template> = {
       return { target: [f], question: `integrate(${printNode(f)}, x)`, answer: `${text(mul(c.node(), F))} + C` };
     },
   },
+
+  // ---- advanced: the same topics, with two rules at once
+  'derivative-exp-trig': {
+    topic: 'derivative',
+    make: (r) => {
+      const [a, b, k] = [r.nonzero(-3, 3), r.nonzero(1, 4), r.nonzero(1, 5)];
+      const ex = pow(id('e'), a === 1 ? X : mul(num(a), X));
+      const trig = call(r.pick(['sin', 'cos']), b === 1 ? X : mul(num(b), X));
+      return derivative(k === 1 ? mul(ex, trig) : mul(num(k), mul(ex, trig)));
+    },
+  },
+  'derivative-power-of-trig': {
+    topic: 'derivative',
+    make: (r) => {
+      const [n, a] = [r.int(2, 5), r.nonzero(1, 4)];
+      const inner = call(r.pick(['sin', 'cos', 'tan']), a === 1 ? X : mul(num(a), X));
+      return derivative(mul(pow(X, num(r.int(1, 3))), pow(inner, num(n))));
+    },
+  },
+  'derivative-log-quotient': {
+    topic: 'derivative',
+    make: (r) => {
+      const [a, b] = [r.int(1, 5), r.int(1, 9)];
+      const top = call('ln', poly([b, 0, a]));
+      return derivative(div(top, r.int(0, 1) ? X : poly([r.int(1, 4), 0, 1])));
+    },
+  },
+  'equation-cubic': {
+    topic: 'equation',
+    make: (r) => {
+      const pick = new Set<number>();
+      while (pick.size < 3) pick.add(r.int(-5, 5));
+      const [r1, r2, r3] = [...pick] as [number, number, number];
+      const k = r.pick([1, 1, 2, -1]);
+      // k(x − r1)(x − r2)(x − r3)
+      const coeffs = [-k * r1 * r2 * r3, k * (r1 * r2 + r1 * r3 + r2 * r3), -k * (r1 + r2 + r3), k];
+      const left = poly(coeffs);
+      return { target: [left, num(0)], question: `${printNode(left)} = 0`, ...roots([r1, r2, r3].map((v) => new Q(v))) };
+    },
+  },
+  'equation-fraction-roots': {
+    topic: 'equation',
+    make: (r) => {
+      const [p, q, u, v] = [r.int(2, 5), r.nonzero(-7, 7), r.int(1, 4), r.nonzero(-7, 7)];
+      // (p x − q)(u x − v) = 0, written out
+      const coeffs = [q * v, -(p * v + q * u), p * u];
+      const left = poly(coeffs);
+      return { target: [left, num(0)], question: `${printNode(left)} = 0`, ...roots([new Q(q, p), new Q(v, u)]) };
+    },
+  },
+  'integral-substitution': {
+    topic: 'integral',
+    make: (r) => {
+      const [k, a] = [r.nonzero(1, 6), r.int(1, 9)];
+      const inner = poly([a, 0, 1]);
+      if (r.int(0, 1)) {
+        // k x (x² + a)^n  →  k/(2(n+1)) (x² + a)^(n+1)
+        const n = r.int(2, 5);
+        return integral(mul(num(2 * k), mul(X, pow(inner, num(n)))), mul(new Q(k, n + 1).node(), pow(inner, num(n + 1))));
+      }
+      // 2k x e^(x²)  →  k e^(x²)
+      return integral(mul(num(2 * k), mul(X, pow(id('e'), pow(X, num(2))))), mul(num(k), pow(id('e'), pow(X, num(2)))));
+    },
+  },
+  'integral-parts': {
+    topic: 'integral',
+    make: (r) => {
+      const a = r.nonzero(-3, 3);
+      const ax = a === 1 ? X : mul(num(a), X);
+      const inv = new Q(1, a);
+      const inv2 = new Q(1, a * a);
+      const kind = r.pick(['exp', 'cos', 'sin'] as const);
+      if (kind === 'exp') {
+        // ∫ x e^(ax) = (x/a − 1/a²) e^(ax)
+        return integral(mul(X, pow(id('e'), ax)), mul(add(mul(inv.node(), X), inv2.neg().node()), pow(id('e'), ax)));
+      }
+      if (kind === 'cos') {
+        // ∫ x cos(ax) = x sin(ax)/a + cos(ax)/a²
+        return integral(mul(X, call('cos', ax)), add(mul(inv.node(), mul(X, call('sin', ax))), mul(inv2.node(), call('cos', ax))));
+      }
+      // ∫ x sin(ax) = −x cos(ax)/a + sin(ax)/a²
+      return integral(mul(X, call('sin', ax)), add(mul(inv.neg().node(), mul(X, call('cos', ax))), mul(inv2.node(), call('sin', ax))));
+    },
+  },
+
+  // ---- exam-style (평가원): see exam.ts
+  ...Object.fromEntries(
+    Object.entries(EXAM_TEMPLATES).map(([name, t]) => [
+      name,
+      {
+        topic: t.unit,
+        make: (r: ReturnType<typeof rng>) => {
+          const made = t.make(r);
+          return { target: [], question: made.prompt.en, answer: String(made.value), value: made.value, points: t.points, prompt: made.prompt, solution: made.solution };
+        },
+      } satisfies Template,
+    ]),
+  ),
 };
 
-export const TOPIC_TEMPLATES: Record<Topic, string[]> = {
-  derivative: ['derivative-polynomial', 'derivative-product', 'derivative-chain', 'derivative-quotient'],
-  equation: ['equation-linear', 'equation-quadratic'],
-  integral: ['integral-polynomial', 'integral-basic'],
+const examOf = (unit: Unit) => Object.entries(EXAM_TEMPLATES).filter(([, t]) => t.unit === unit).map(([name]) => name);
+
+/** the templates for each level and topic */
+export const LEVEL_TEMPLATES: Record<Level, Partial<Record<Topic, string[]>>> = {
+  basic: {
+    derivative: ['derivative-polynomial', 'derivative-product', 'derivative-chain', 'derivative-quotient'],
+    equation: ['equation-linear', 'equation-quadratic'],
+    integral: ['integral-polynomial', 'integral-basic'],
+  },
+  advanced: {
+    derivative: ['derivative-exp-trig', 'derivative-power-of-trig', 'derivative-log-quotient', 'derivative-quotient'],
+    equation: ['equation-cubic', 'equation-fraction-roots'],
+    integral: ['integral-substitution', 'integral-parts'],
+  },
+  exam: { algebra: examOf('algebra'), calculus: examOf('calculus') },
 };
+/** the basic templates, by topic */
+export const TOPIC_TEMPLATES = LEVEL_TEMPLATES.basic as Record<'derivative' | 'equation' | 'integral', string[]>;
+/** the topics a level offers, in order */
+export const levelTopics = (level: Level): Topic[] => Object.keys(LEVEL_TEMPLATES[level]) as Topic[];
 
 export function makeProblem(template: string, seed: number): Problem {
   const t = TEMPLATES[template];
@@ -174,8 +301,8 @@ export function makeProblem(template: string, seed: number): Problem {
 }
 
 /** A new problem on a topic: a random template, a random seed. */
-export function nextProblem(topic: Topic, random = Math.random): Problem {
-  const list = TOPIC_TEMPLATES[topic];
+export function nextProblem(topic: Topic, random = Math.random, level: Level = 'basic'): Problem {
+  const list = LEVEL_TEMPLATES[level][topic] ?? LEVEL_TEMPLATES.basic[topic] ?? LEVEL_TEMPLATES.exam[topic]!;
   return makeProblem(list[Math.floor(random() * list.length)]!, Math.floor(random() * 2 ** 31));
 }
 
@@ -197,6 +324,7 @@ function answerExpression(input: string): Node {
  */
 export function checkAnswer(p: Problem, input: string): Verdict {
   if (!input.trim()) return { correct: false, reason: 'empty' };
+  if (p.value !== undefined) return checkValue(p.value, input);
   if (p.topic === 'equation') return checkSolutions(p, input);
 
   let given: (v: number[]) => number;
@@ -226,6 +354,20 @@ export function checkAnswer(p: Problem, input: string): Verdict {
     if (!close(given([b]) - given([a]), integral(a, b))) return { correct: false, reason: 'wrong' };
   }
   return { correct: true };
+}
+
+/** a number answer: any form with the same value (12, 24/2, 2^2 * 3) */
+function checkValue(expected: number, input: string): Verdict {
+  const eq = input.lastIndexOf('=');
+  try {
+    const st = parse(eq >= 0 ? input.slice(eq + 1) : input);
+    if (st.kind !== 'expr') return { correct: false, reason: 'unreadable' };
+    const v = evaluate(st.expr, EMPTY_ENV, DEFAULT_SETTINGS);
+    if (v.kind !== 'num' || !v.z.isReal()) return { correct: false, reason: 'unreadable' };
+    return Math.abs(v.z.re - expected) <= 1e-9 * Math.max(1, Math.abs(expected)) ? { correct: true } : { correct: false, reason: 'wrong' };
+  } catch (e) {
+    return { correct: false, reason: /not defined/i.test(String(e)) ? 'names' : 'unreadable' };
+  }
 }
 
 function checkSolutions(p: Problem, input: string): Verdict {

@@ -21,6 +21,10 @@ export type GeoObject =
   /** compass: centre `center`, radius the distance from r1 to r2 */
   | { id: string; kind: 'compass'; name: string; center: string; r1: string; r2: string }
   | { id: string; kind: 'polygon'; name: string; pts: string[] }
+  /** a regular polygon with n sides on the side a→b, turning left (a square when n = 4) */
+  | { id: string; kind: 'regular'; name: string; a: string; b: string; n: number }
+  /** corner k of a regular polygon (its corners 0 and 1 are a and b) */
+  | { id: string; kind: 'vertex'; name: string; poly: string; k: number }
   /** the angle a-vertex-c, measured */
   | { id: string; kind: 'angle'; name: string; a: string; vertex: string; c: string }
   | { id: string; kind: 'text'; name: string; x: number; y: number; text: string };
@@ -170,6 +174,18 @@ export function resolve(objects: GeoObject[]): Map<string, Shape> {
         if (c && p && q && dist(p, q) > 1e-12) shape = { type: 'circle', c, r: dist(p, q) };
         break;
       }
+      case 'regular': {
+        const [a, b] = [pt(o.a), pt(o.b)];
+        const n = Math.round(o.n);
+        if (a && b && n >= 3 && n <= 60 && dist(a, b) > 1e-12) shape = { type: 'polygon', pts: regularCorners(a, b, n) };
+        break;
+      }
+      case 'vertex': {
+        const s = out.get(o.poly);
+        const at = s?.type === 'polygon' ? s.pts[o.k] : undefined;
+        if (at) shape = { type: 'point', at, free: false };
+        break;
+      }
       case 'polygon': {
         const pts = o.pts.map(pt);
         if (pts.length >= 3 && pts.every(Boolean)) shape = { type: 'polygon', pts: pts as Pt[] };
@@ -191,6 +207,19 @@ export function resolve(objects: GeoObject[]): Map<string, Shape> {
     if (shape) out.set(o.id, shape);
   }
   return out;
+}
+
+/** the corners of a regular n-gon on the side a→b, going round anticlockwise */
+export function regularCorners(a: Pt, b: Pt, n: number): Pt[] {
+  const pts = [a, b];
+  const turn = (2 * Math.PI) / n;
+  let d = { x: b.x - a.x, y: b.y - a.y };
+  for (let k = 2; k < n; k++) {
+    d = { x: d.x * Math.cos(turn) - d.y * Math.sin(turn), y: d.x * Math.sin(turn) + d.y * Math.cos(turn) };
+    const last = pts[pts.length - 1]!;
+    pts.push({ x: last.x + d.x, y: last.y + d.y });
+  }
+  return pts;
 }
 
 /** a measure to show beside an object: length, radius and area, area and perimeter, an angle */
@@ -240,7 +269,11 @@ export function toLines(objects: GeoObject[]): string[] {
       case 'intersection':
       case 'reflect':
       case 'rotate':
+      case 'vertex':
         if (s.type === 'point') lines.push(`${o.name} = ${pair(s.at)}`);
+        break;
+      case 'regular':
+        if (s.type === 'polygon') lines.push(`polygon(${s.pts.map(pair).join(', ')})`);
         break;
       case 'segment':
       case 'line':

@@ -89,4 +89,21 @@ describe('pen shapes', () => {
     const pts = Array.from({ length: 40 }, (_, k) => ({ x: (k % 7) * 30, y: k * 4 }));
     expect(recognize(pts)).toBe(null);
   });
+
+  it('builds a square and a regular hexagon on a side, corners following the side', () => {
+    const sq: GeoObject[] = [
+      P('A', 0, 0),
+      P('B', 2, 0),
+      { id: 'q', kind: 'regular', name: 'q', a: 'A', b: 'B', n: 4 },
+      { id: 'C', kind: 'vertex', name: 'C', poly: 'q', k: 2 },
+      { id: 'D', kind: 'vertex', name: 'D', poly: 'q', k: 3 },
+    ];
+    const r = resolve(sq);
+    expect(measure(r.get('q')!)).toBe('4');
+    const c = r.get('C')!;
+    expect(c.type === 'point' && [Math.round(c.at.x * 1e9) / 1e9, Math.round(c.at.y * 1e9) / 1e9]).toEqual([2, 2]);
+    expect(toLines(sq)).toContain('D = (0, 2)');
+    const hex = resolve([P('A', 0, 0), P('B', 2, 0), { id: 'h', kind: 'regular', name: 'h', a: 'A', b: 'B', n: 6 }]);
+    expect(measure(hex.get('h')!)).toBe('10.392');
+  });
 });

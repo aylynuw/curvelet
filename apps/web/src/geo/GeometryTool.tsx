@@ -37,10 +37,11 @@ const NEEDS: Partial<Record<GeoTool, Need[]>> = {
   compass: ['pt', 'pt', 'pt'], angle: ['pt', 'pt', 'pt'],
   perpendicular: ['line', 'pt'], parallel: ['line', 'pt'], reflect: ['pt', 'line'], rotate: ['pt', 'pt'],
   intersection: ['curve', 'curve'],
+  square: ['pt', 'pt'], regular: ['pt', 'pt'],
 };
 const GROUPS: GeoTool[][] = [
-  ['move', 'point', 'pen'],
-  ['segment', 'line', 'ray', 'polygon', 'circle', 'compass'],
+  ['move', 'select', 'point', 'pen'],
+  ['segment', 'line', 'ray', 'polygon', 'square', 'regular', 'circle', 'compass'],
   ['midpoint', 'perpendicular', 'parallel', 'bisector', 'intersection'],
   ['angle', 'reflect', 'rotate', 'delete'],
 ];
@@ -73,9 +74,29 @@ function refs(o: GeoObject): string[] {
       return [o.center, o.r1, o.r2];
     case 'polygon':
       return o.pts;
+    case 'regular':
+      return [o.a, o.b];
+    case 'vertex':
+      return [o.poly];
     case 'angle':
       return [o.a, o.vertex, o.c];
   }
+}
+/** the free points an object hangs on: moving them moves it */
+function freeRoots(objects: GeoObject[], ids: string[]): string[] {
+  const byId = new Map(objects.map((o) => [o.id, o]));
+  const out = new Set<string>();
+  const seen = new Set<string>();
+  const walk = (id: string) => {
+    if (seen.has(id)) return;
+    seen.add(id);
+    const o = byId.get(id);
+    if (!o) return;
+    if (o.kind === 'point') out.add(id);
+    refs(o).forEach(walk);
+  };
+  ids.forEach(walk);
+  return [...out];
 }
 /** remove ids and everything built on them */
 function without(objects: GeoObject[], ids: Set<string>): GeoObject[] {
@@ -97,6 +118,11 @@ export function GeometryTool({ s, onSendToGraph }: { s: GeoStrings; onSendToGrap
   const [tool, setTool] = useState<GeoTool>('move');
   const [picks, setPicks] = useState<string[]>([]);
   const [degrees, setDegrees] = useState(90);
+  const [sides, setSides] = useState(5);
+  /** the Select tool's objects */
+  const [sel, setSel] = useState<string[]>([]);
+  const [box, setBox] = useState<{ a: Pt; b: Pt } | null>(null);
+  const group = useRef<{ start: Pt; orig: Map<string, Pt>; moved: boolean } | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
   const [hover, setHover] = useState<Pt | null>(null);
@@ -140,8 +166,13 @@ export function GeometryTool({ s, onSendToGraph }: { s: GeoStrings; onSendToGrap
     }
     setPicks([]);
   };
-  const live = useRef({ step, selected, objects });
-  live.current = { step, selected, objects };
+  const deleteSel = () => {
+    if (!sel.length) return;
+    commit(without(objects, new Set(sel)));
+    setSel([]);
+  };
+  const live = useRef({ step, selected, objects, sel, deleteSel });
+  live.current = { step, selected, objects, sel, deleteSel };
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const el = e.target as HTMLElement | null;
@@ -155,6 +186,10 @@ export function GeometryTool({ s, onSendToGraph }: { s: GeoStrings; onSendToGrap
       } else if (e.key === 'Escape') {
         setPicks([]);
         setStroke(null);
+        setSel([]);
+      } else if ((e.key === 'Delete' || e.key === 'Backspace') && live.current.sel.length && el?.closest('.geo')) {
+        e.preventDefault();
+        live.current.deleteSel();
       } else if ((e.key === 'Delete' || e.key === 'Backspace') && live.current.selected && el?.closest('.geo')) {
         e.preventDefault();
         const id = live.current.selected;
@@ -220,7 +255,19 @@ export function GeometryTool({ s, onSendToGraph }: { s: GeoStrings; onSendToGrap
       const d = distToShape(sp, sh);
       if (d < bestD) [best, bestD] = [id, d];
     }
-    return best;
+    if (best || need !== 'any') return best;
+    // inside a filled polygon: the topmost one
+    for (const [id, sh] of [...shapes].reverse()) {
+      if (sh.type !== 'polygon') continue;
+      const pts = sh.pts.map(toScreen);
+      let inside = false;
+      for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) {
+        const [p, q] = [pts[i]!, pts[j]!];
+        if (p.y > sp.y !== q.y > sp.y && sp.x < ((q.x - p.x) * (sp.y - p.y)) / (q.y - p.y) + p.x) inside = !inside;
+      }
+      if (inside) return id;
+    }
+    return null;
   };
 
   // ---- building
@@ -249,6 +296,14 @@ export function GeometryTool({ s, onSendToGraph }: { s: GeoStrings; onSendToGrap
         return a === b ? null : [...list, { id, kind: 'compass', name: lowerName(list), r1: a, r2: b, center: c }];
       case 'midpoint':
         return a === b ? null : [...list, { id, kind: 'midpoint', name: nextName(list), a, b }];
+      case 'square':
+      case 'regular': {
+        if (a === b) return null;
+        const n = t === 'square' ? 4 : Math.max(3, Math.min(60, Math.round(sides)));
+        let next: GeoObject[] = [...list, { id, kind: 'regular', name: lowerName(list), a, b, n }];
+        for (let k = 2; k < n; k++) next = [...next, { id: newId(), kind: 'vertex', name: nextName(next), poly: id, k }];
+        return next;
+      }
       case 'bisector':
         return a === b ? null : [...list, { id, kind: 'bisector', name: lowerName(list), a, b }];
       case 'perpendicular':
@@ -339,6 +394,28 @@ export function GeometryTool({ s, onSendToGraph }: { s: GeoStrings; onSendToGrap
       setStroke([sp]);
       return;
     }
+    if (tool === 'select') {
+      const id = hitPoint(sp) ?? hitCurve(sp, 'any');
+      if (!id) {
+        if (!e.shiftKey) setSel([]);
+        setBox({ a: sp, b: sp });
+        return;
+      }
+      let next = sel;
+      if (e.shiftKey) next = sel.includes(id) ? sel.filter((x) => x !== id) : [...sel, id];
+      else if (!sel.includes(id)) next = [id];
+      setSel(next);
+      if (!next.includes(id)) return;
+      const roots = freeRoots(objects, next);
+      const orig = new Map<string, Pt>();
+      for (const r of roots) {
+        const o = byId.get(r);
+        if (o?.kind === 'point') orig.set(r, { x: o.x, y: o.y });
+      }
+      setPast((p) => [...p, objects]);
+      group.current = { start: toWorld(sp), orig, moved: false };
+      return;
+    }
     if (tool === 'move') {
       const id = hitPoint(sp);
       const free = id && byId.get(id)?.kind === 'point' ? id : null;
@@ -356,6 +433,24 @@ export function GeometryTool({ s, onSendToGraph }: { s: GeoStrings; onSendToGrap
       setStroke((st) => (st ? [...st, sp] : st));
       return;
     }
+    if (box) {
+      setBox({ a: box.a, b: sp });
+      return;
+    }
+    const g = group.current;
+    if (g) {
+      g.moved = true;
+      const w = toWorld(sp);
+      let [dx, dy] = [w.x - g.start.x, w.y - g.start.y];
+      // the first point lands on the grid, the rest keep their places relative to it
+      const first = g.orig.values().next().value;
+      if (first) {
+        const to = snapped({ x: first.x + dx, y: first.y + dy });
+        [dx, dy] = [to.x - first.x, to.y - first.y];
+      }
+      setDoc((doc0) => ({ ...doc0, objects: doc0.objects.map((o) => (o.kind === 'point' && g.orig.has(o.id) ? { ...o, x: g.orig.get(o.id)!.x + dx, y: g.orig.get(o.id)!.y + dy } : o)) }));
+      return;
+    }
     const d = drag.current;
     if (!d) return;
     d.moved = true;
@@ -366,10 +461,38 @@ export function GeometryTool({ s, onSendToGraph }: { s: GeoStrings; onSendToGrap
       setDoc((doc0) => ({ ...doc0, view: { ...d.view, cx: d.view.cx - (sp.x - d.from.x) / d.view.s, cy: d.view.cy + (sp.y - d.from.y) / d.view.s } }));
     }
   };
-  const onUp = () => {
+  const onUp = (e: RPointerEvent<SVGSVGElement>) => {
     if (stroke) {
       finishStroke(stroke);
       setStroke(null);
+    }
+    if (box) {
+      const [x0, x1] = [Math.min(box.a.x, box.b.x), Math.max(box.a.x, box.b.x)];
+      const [y0, y1] = [Math.min(box.a.y, box.b.y), Math.max(box.a.y, box.b.y)];
+      if (x1 - x0 > 3 || y1 - y0 > 3) {
+        const inside = (p: Pt) => {
+          const q = toScreen(p);
+          return q.x >= x0 && q.x <= x1 && q.y >= y0 && q.y <= y1;
+        };
+        const hit: string[] = [];
+        for (const [id, sh] of shapes) {
+          const pts =
+            sh.type === 'point' || sh.type === 'text' ? [sh.at]
+            : sh.type === 'line' ? [sh.a, sh.b]
+            : sh.type === 'circle' ? [{ x: sh.c.x - sh.r, y: sh.c.y - sh.r }, { x: sh.c.x + sh.r, y: sh.c.y + sh.r }]
+            : sh.type === 'polygon' ? sh.pts
+            : [sh.a, sh.v, sh.c];
+          if (pts.every(inside)) hit.push(id);
+        }
+        setSel((cur) => (e.shiftKey ? [...new Set([...cur, ...hit])] : hit));
+      }
+      setBox(null);
+    }
+    const g = group.current;
+    if (g) {
+      if (!g.moved) setPast((p) => p.slice(0, -1));
+      else setFuture([]);
+      group.current = null;
     }
     const d = drag.current;
     // a click on a free point that didn't move isn't an edit
@@ -473,7 +596,7 @@ export function GeometryTool({ s, onSendToGraph }: { s: GeoStrings; onSendToGrap
     return out;
   };
 
-  const highlight = (id: string) => (id === selected || picks.includes(id) ? ' is-picked' : '');
+  const highlight = (id: string) => (id === selected || picks.includes(id) || sel.includes(id) ? ' is-picked' : '');
   const fills: ReactElement[] = [];
   const strokes: ReactElement[] = [];
   const dots: ReactElement[] = [];
@@ -526,7 +649,7 @@ export function GeometryTool({ s, onSendToGraph }: { s: GeoStrings; onSendToGrap
     const names = refs(o).map((r) => byId.get(r)?.name ?? '?');
     return names.length ? `${s.kinds[o.kind]} ${s.of(names.join(', '))}` : s.kinds[o.kind];
   };
-  const cursor = tool === 'move' ? (drag.current ? 'grabbing' : 'grab') : 'crosshair';
+  const cursor = tool === 'move' ? (drag.current ? 'grabbing' : 'grab') : tool === 'select' ? 'default' : 'crosshair';
 
   return (
     <div className="geo">
@@ -543,6 +666,7 @@ export function GeometryTool({ s, onSendToGraph }: { s: GeoStrings; onSendToGrap
                   setTool(id);
                   setPicks([]);
                   setMessage(null);
+                  if (id !== 'select') setSel([]);
                 }}
               >
                 {s.tools[id]}
@@ -550,6 +674,26 @@ export function GeometryTool({ s, onSendToGraph }: { s: GeoStrings; onSendToGrap
             ))}
           </div>
         ))}
+        {tool === 'regular' && (
+          <label className="geo__deg">
+            {s.sides}
+            <input className="input input--code" type="number" min={3} max={60} value={sides} onChange={(e) => setSides(Math.max(3, Math.min(60, Math.round(Number(e.target.value) || 3))))} />
+          </label>
+        )}
+        {tool === 'select' && (
+          <div className="geo__selbar" role="group" aria-label={s.tools.select}>
+            <span className="geo__selcount" aria-live="polite">{s.selected(sel.length)}</span>
+            <button type="button" className="btn btn--small" onClick={() => setSel(objects.map((o) => o.id))} disabled={!objects.length}>
+              {s.selectAll}
+            </button>
+            <button type="button" className="btn btn--small" onClick={deleteSel} disabled={!sel.length}>
+              {s.deleteSelected}
+            </button>
+            <button type="button" className="btn btn--small btn--quiet" onClick={() => setSel([])} disabled={!sel.length}>
+              {s.clearSelection}
+            </button>
+          </div>
+        )}
         {tool === 'rotate' && (
           <label className="geo__deg">
             {s.degrees}
@@ -582,6 +726,7 @@ export function GeometryTool({ s, onSendToGraph }: { s: GeoStrings; onSendToGrap
             {stroke && <polyline className="geo__ink" points={stroke.map((p) => `${p.x},${p.y}`).join(' ')} />}
             {dots}
             {labels}
+            {box && <rect className="geo__box" x={Math.min(box.a.x, box.b.x)} y={Math.min(box.a.y, box.b.y)} width={Math.abs(box.b.x - box.a.x)} height={Math.abs(box.b.y - box.a.y)} />}
           </svg>
           {hover && <span className="geo__readout">({+hover.x.toFixed(2)}, {+hover.y.toFixed(2)})</span>}
         </section>

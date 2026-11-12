@@ -1,0 +1,188 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>Curvelet AX Slides</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root{--ink:#14181f;--ink2:#4a5261;--ink3:#7b8494;--line:#dfe3ea;--paper:#fff;--wash:#f4f6f9;--blue:#1f5fd6;--blue-wash:#e8effc}
+*{box-sizing:border-box;margin:0;padding:0}
+html{scrollbar-width:none}::-webkit-scrollbar{display:none}
+body{background:#cfd4dc;color:var(--ink);font-family:"IBM Plex Sans KR",sans-serif;-webkit-font-smoothing:antialiased;word-break:keep-all;line-height:1.55}
+.slide{width:1920px;height:1080px;background:var(--paper);padding:88px 120px 72px;display:flex;flex-direction:column;position:relative;overflow:hidden;margin-bottom:40px}
+.pg{position:absolute;left:120px;right:120px;bottom:44px;display:flex;justify-content:space-between;font-family:"IBM Plex Mono",monospace;font-size:16px;color:var(--ink3)}
+.body{flex:1;display:flex;flex-direction:column;justify-content:center}
+.eyebrow{font-size:20px;font-weight:600;letter-spacing:.08em;color:var(--blue)}
+h1{font-size:84px;line-height:1.12;font-weight:700;letter-spacing:-.02em;margin-top:22px}
+.lede{font-size:27px;color:var(--ink2);margin-top:28px;max-width:1300px}
+.meta{display:flex;gap:36px;margin-top:32px;font-size:19px;color:var(--ink3)}
+.meta b{color:var(--ink);font-weight:600;margin-left:8px}
+.stats{display:grid;grid-template-columns:repeat(6,1fr);border-top:2px solid var(--ink);border-bottom:1px solid var(--line);margin-top:72px}
+.stat{padding:30px 20px 28px 0}
+.stat+.stat{padding-left:26px;border-left:1px solid var(--line)}
+.stat .n{font-size:54px;font-weight:700;letter-spacing:-.02em;line-height:1.1}
+.stat .l{font-size:18px;color:var(--ink2);margin-top:10px}
+h2{font-size:52px;font-weight:700;letter-spacing:-.015em;line-height:1.2}
+h2 .num{font-family:"IBM Plex Mono",monospace;font-size:22px;color:var(--blue);font-weight:500;display:block;margin-bottom:12px}
+.sub{font-size:23px;color:var(--ink2);margin-top:14px}
+.shotwrap{flex:1;display:flex;gap:56px;align-items:center;margin-top:8px}
+.shot{flex:0 0 1180px;border:1px solid var(--line);border-radius:14px;overflow:hidden;box-shadow:0 30px 60px -30px rgba(20,24,31,.3)}
+.shot img{display:block;width:100%}
+.shotnote h2{font-size:44px}
+.shotnote ul{list-style:none;margin-top:30px}
+.shotnote li{font-size:21px;color:var(--ink2);padding:16px 0;border-top:1px solid var(--line)}
+.shotnote li b{display:block;color:var(--ink);font-size:22px;margin-bottom:4px}
+.roles{display:grid;grid-template-columns:1fr 1fr;margin-top:44px;border:1px solid var(--line);border-radius:14px;overflow:hidden}
+.role{padding:40px 48px}
+.role+.role{border-left:1px solid var(--line);background:var(--wash)}
+.role h3{font-size:30px;font-weight:700}
+.role .who{font-size:18px;color:var(--ink3);margin-top:4px}
+.role ul{list-style:none;margin-top:22px}
+.role li{font-size:20px;padding:13px 0;border-top:1px solid var(--line);display:flex;gap:16px}
+.role li:first-child{border-top:none}
+.role li .k{flex:0 0 120px;font-weight:600}
+.role li .v{color:var(--ink2)}
+.loop{margin-top:48px;display:grid;grid-template-columns:repeat(5,1fr);gap:22px}
+.step{border:1px solid var(--line);border-radius:12px;padding:28px 26px 30px;position:relative}
+.step .i{font-family:"IBM Plex Mono",monospace;font-size:17px;color:var(--blue)}
+.step h4{font-size:24px;font-weight:700;margin-top:10px}
+.step p{font-size:18.5px;color:var(--ink2);margin-top:10px;min-height:86px}
+.step .who{display:inline-block;margin-top:16px;font-size:15px;font-weight:600;padding:4px 12px;border-radius:999px}
+.who.me{background:var(--ink);color:#fff}.who.ai{background:var(--blue-wash);color:var(--blue)}
+.step:not(:last-child)::after{content:"→";position:absolute;right:-19px;top:50%;transform:translateY(-50%);font-size:22px;color:var(--ink3);background:#fff;width:16px;text-align:center}
+.back{margin-top:36px;font-size:21px;color:var(--ink2);border-top:1px dashed var(--line);padding-top:24px;max-width:1500px}
+.back b{color:var(--ink)}
+.quotes{margin-top:44px;display:grid;grid-template-columns:1fr 1fr;gap:40px}
+.q{border-left:3px solid var(--ink);padding:8px 0 8px 28px}
+.q .t{font-family:"IBM Plex Mono",monospace;font-size:24px;line-height:1.5}
+.q .r{font-size:21px;color:var(--ink2);margin-top:16px}
+.decisions{margin-top:48px;display:grid;grid-template-columns:repeat(3,1fr);gap:24px}
+.d{border:1px solid var(--line);border-radius:12px;padding:38px 36px}
+.d h4{font-size:27px;font-weight:700}
+.d .opt{margin-top:18px;font-size:18px;color:var(--ink3)}
+.d .pick{margin-top:8px;font-size:20px;font-weight:600;color:var(--blue)}
+.d p{font-size:20px;color:var(--ink2);margin-top:18px}
+.guard{margin-top:48px;display:grid;grid-template-columns:1fr 1fr;border-top:2px solid var(--ink)}
+.g{padding:34px 34px 34px 0;border-bottom:1px solid var(--line);display:flex;gap:26px}
+.g:nth-child(even){padding-left:34px;border-left:1px solid var(--line)}
+.g .k{flex:0 0 170px;font-size:23px;font-weight:700}
+.g .v{font-size:21px;color:var(--ink2)}
+.learn{margin-top:40px;counter-reset:l}
+.learn li{list-style:none;display:grid;grid-template-columns:84px 1fr;padding:30px 0;border-top:1px solid var(--line)}
+.learn li::before{counter-increment:l;content:"0" counter(l);font-family:"IBM Plex Mono",monospace;font-size:26px;color:var(--blue)}
+.learn h4{font-size:29px;font-weight:700}
+.learn p{font-size:21px;color:var(--ink2);margin-top:8px}
+#s7 .g{padding-top:24px;padding-bottom:24px}
+#s7 .learn li{padding:20px 0}
+#s7 .learn h4{font-size:26px}
+#s7 .learn p{font-size:19.5px;margin-top:4px}
+.src{margin-top:28px;font-size:16px;color:var(--ink3)}
+</style>
+</head>
+<body>
+
+<div class="slide" id="s1"><div class="body">
+  <div class="eyebrow">AX · AI 협업 경험</div>
+  <h1>Curvelet<br>AI 에이전트와 함께 만든 수학 플랫폼</h1>
+  <p class="lede">그래프, 정확한 기호 계산, 기하, 수능 스타일 도형, 학습지까지 한 작업 공간에서 다루는 무료 수학 앱입니다. 제품 방향과 판단은 제가 맡았고, 설계·구현·테스트·검증은 Claude Code가 맡았습니다.</p>
+  <div class="meta"><span>기간<b>2026.11.11 – 11.12</b></span><span>내 역할<b>기획 · 디렉션 · QA</b></span><span>AI<b>Claude Code</b></span><span>참고<b>Desmos (상호작용 방식만)</b></span></div>
+  <div class="stats">
+    <div class="stat"><div class="n">16</div><div class="l">단계로 나눈 로드맵<br>(Phase 0–12, 3b·6b·10b)</div></div>
+    <div class="stat"><div class="n">24.7k</div><div class="l">TypeScript 코드 줄 수<br>(패키지 5개 + 웹 앱)</div></div>
+    <div class="stat"><div class="n">713</div><div class="l">자동 테스트<br>전부 통과</div></div>
+    <div class="stat"><div class="n">2,200+</div><div class="l">AI 도구 호출<br>(최근 세션 2개 기준)</div></div>
+    <div class="stat"><div class="n">~900</div><div class="l">브라우저 검증 동작<br>(클릭·입력·캡처)</div></div>
+    <div class="stat"><div class="n">3</div><div class="l">배포 대상<br>웹 PWA · 데스크톱 · 모바일(준비)</div></div>
+  </div>
+</div><div class="pg"><span>Curvelet · AX</span><span>01 / 07</span></div></div>
+
+<div class="slide" id="s2">
+  <div class="shotwrap">
+    <div class="shot"><img src="app-graph.png" alt="Curvelet 그래프 화면"></div>
+    <div class="shotnote">
+      <div class="eyebrow">결과물</div>
+      <h2 style="margin-top:14px">정의 하나로<br>모든 도구가 움직입니다</h2>
+      <ul>
+        <li><b>공유되는 let 정의</b>f(x) 하나를 도함수 곡선과 부등식 영역이 함께 참조</li>
+        <li><b>자동 분석</b>절편·극대·극소를 계산해 그래프 위에 표시</li>
+        <li><b>그래프 · 계산기 · 기하 · 학습지</b>한 작업 공간 안의 네 가지 도구</li>
+      </ul>
+    </div>
+  </div>
+<div class="pg"><span>Curvelet · AX</span><span>02 / 07</span></div></div>
+
+<div class="slide" id="s3"><div class="body">
+  <h2><span class="num">01</span>역할 분담</h2>
+  <p class="sub">무엇을, 왜 만들지는 제가 정하고, 어떻게 만들지는 AI에게 맡겼습니다.</p>
+  <div class="roles">
+    <div class="role">
+      <h3>나 — 디렉터</h3><div class="who">제품 오너 · 실사용자 · 최종 판단</div>
+      <ul>
+        <li><span class="k">방향</span><span class="v">“모두를 위한 무료 계산기” 비전, Desmos를 상호작용 참고로 지정</span></li>
+        <li><span class="k">속도 조절</span><span class="v">“Start Phase N”으로 단계마다 착수 시점 결정</span></li>
+        <li><span class="k">사용 QA</span><span class="v">직접 써 보고 스크린샷과 함께 문제를 짚어 줌</span></li>
+        <li><span class="k">도메인</span><span class="v">수능·평가원 스타일 도형과 문제 요구사항 정의</span></li>
+        <li><span class="k">결정</span><span class="v">이름(Curvelet), 우선순위, 권한 범위</span></li>
+      </ul>
+    </div>
+    <div class="role">
+      <h3>AI — 엔지니어</h3><div class="who">Claude Code (에이전트 모드)</div>
+      <ul>
+        <li><span class="k">기획 문서</span><span class="v">PLAN.md: 기능, 아키텍처, 단계, 성공 기준, 미결정 사항</span></li>
+        <li><span class="k">구현</span><span class="v">자체 파서·평가기, SymPy 워커, 렌더러, 단계별 풀이 엔진</span></li>
+        <li><span class="k">테스트</span><span class="v">엔진·CAS·렌더·입력·풀이·웹 앱 6개 묶음 Vitest</span></li>
+        <li><span class="k">검증</span><span class="v">Playwright로 3개 화면 폭 × 라이트/다크 × 한국어 확인</span></li>
+        <li><span class="k">배포</span><span class="v">PWA 오프라인, Tauri 설치 파일, GitHub Actions 빌드</span></li>
+      </ul>
+    </div>
+  </div>
+</div><div class="pg"><span>Curvelet · AX</span><span>03 / 07</span></div></div>
+
+<div class="slide" id="s4"><div class="body">
+  <h2><span class="num">02</span>작업 루프</h2>
+  <p class="sub">한 번에 다 시키지 않고, 단계마다 같은 루프를 돌렸습니다.</p>
+  <div class="loop">
+    <div class="step"><div class="i">1</div><h4>브레인스토밍</h4><p>아이디어를 던지면 AI가 질문으로 범위를 좁히고 PLAN.md로 정리</p><span class="who me">나 + AI</span></div>
+    <div class="step"><div class="i">2</div><h4>단계 착수</h4><p>“Start Phase 7”처럼 한 단계만 열어 범위를 고정</p><span class="who me">나</span></div>
+    <div class="step"><div class="i">3</div><h4>구현 · 테스트</h4><p>엔진부터 UI까지 작성하고 단위 테스트를 돌림</p><span class="who ai">AI</span></div>
+    <div class="step"><div class="i">4</div><h4>브라우저 검증</h4><p>실제 화면을 클릭·입력하고 캡처해 결과를 보고</p><span class="who ai">AI</span></div>
+    <div class="step"><div class="i">5</div><h4>직접 사용</h4><p>써 보며 어색한 점을 찾아 다음 요청으로 넘김</p><span class="who me">나</span></div>
+  </div>
+  <p class="back"><b>루프가 만든 결과:</b> Phase 11(앱 패키징) 직전, 직접 써 보며 찾은 문제 6가지를 던졌고 AI 브레인스토밍으로 범위를 넓혀 ‘Phase 10b 폴리시 로드맵’을 따로 만들었습니다. 실행 취소, 슬라이더 설정, 친절한 오류 문구 등이 여기서 나왔습니다.</p>
+</div><div class="pg"><span>Curvelet · AX</span><span>04 / 07</span></div></div>
+
+<div class="slide" id="s5"><div class="body">
+  <h2><span class="num">02</span>피드백이 기능이 되는 과정</h2>
+  <p class="sub">제가 실제로 보낸 요청과, 그 요청이 바뀐 결과입니다.</p>
+  <div class="quotes">
+    <div class="q"><div class="t">“Before the phase 11 we need polish the features. Here is what I found.”</div><div class="r">→ f(x) 정의 문법 통일, HEX 색상, 그래프·계산기·기하 패널 분리 등 6개 항목이 폴리시 로드맵으로</div></div>
+    <div class="q"><div class="t">“cant type Int with integral, sum with summation… as LaTeX users use.”</div><div class="r">→ 모든 LaTeX 기호 이름을 백슬래시 없이 입력하는 단축 입력으로 확장</div></div>
+  </div>
+</div><div class="pg"><span>Curvelet · AX</span><span>05 / 07</span></div></div>
+
+<div class="slide" id="s6"><div class="body">
+  <h2><span class="num">03</span>사람이 내린 결정</h2>
+  <p class="sub">AI가 장단점을 정리해 오면, 사용자(학생)와 비용을 기준으로 제가 골랐습니다.</p>
+  <div class="decisions">
+    <div class="d"><h4>기호 계산 엔진</h4><div class="opt">서버 API · 직접 구현 · <b>브라우저 내 SymPy</b></div><div class="pick">Pyodide + SymPy, 앱에 내장</div><p>서버 비용 없이 오프라인에서도 적분·인수분해가 동작합니다. 앱스토어 규정에 맞춰 런타임 다운로드 대신 번들로 넣었습니다.</p></div>
+    <div class="d"><h4>손글씨 · 사진 인식</h4><div class="opt">클라우드 API · 학습 모델 · <b>기기 내 규칙 기반</b></div><div class="pick">기기에서만 인식, 업로드 없음</div><p>사용자가 미성년 학생일 수 있어 이미지를 외부로 보내지 않는 쪽을 택했습니다. 인식이 부족하면 대안을 미결정 항목으로 남겨 두었습니다.</p></div>
+    <div class="d"><h4>수능 스타일 도형</h4><div class="opt">일반 그래프 내보내기 · <b>시험지 스타일 모드</b></div><div class="pick">흑백·세리프·원점 O 표기</div><p>국내 교사와 학생이 바로 쓸 수 있도록 시험지 서식을 기능으로 정의했습니다. 기출 문제는 복제하지 않고 원본 도형만 만듭니다.</p></div>
+  </div>
+</div><div class="pg"><span>Curvelet · AX</span><span>06 / 07</span></div></div>
+
+<div class="slide" id="s7"><div class="body">
+  <h2><span class="num">04 · 05</span>AI를 다루는 장치와 배운 점</h2>
+  <div class="guard" style="margin-top:36px">
+    <div class="g"><div class="k">작업 규칙 파일</div><div class="v">CLAUDE.md에 검증 폭, 디자인 점검, 권한 범위를 적어 모든 세션이 같은 기준을 따르게 함</div></div>
+    <div class="g"><div class="k">디자인 스킬</div><div class="v">Hallmark로 “생성된 티”가 나는 기본값을 피하고 앱 고유의 Blueprint 테마를 잡음</div></div>
+    <div class="g"><div class="k">권한 위임</div><div class="v">“민감하지 않은 건 묻지 말 것”으로 반복 확인을 줄이고, 계정·배포만 직접 승인</div></div>
+    <div class="g"><div class="k">근거 있는 완료</div><div class="v">테스트 결과와 실제 화면 캡처가 있어야 단계 완료로 보고, 남은 일은 PLAN.md에 기록</div></div>
+  </div>
+  <ol class="learn" style="margin-top:28px">
+    <li><div><h4>범위를 쪼개면 AI의 결과가 안정된다</h4><p>16개 단계를 한 번에 하나씩 열자, 큰 코드베이스에서도 테스트가 깨지지 않은 채로 기능이 쌓였습니다.</p></div></li>
+    <li><div><h4>가장 좋은 요구사항은 직접 써 본 경험에서 나온다</h4><p>실행 취소, LaTeX 단축 입력, ≠ 결과의 참/거짓 표시는 모두 써 보다 막힌 지점에서 나왔습니다.</p></div></li>
+    <li><div><h4>판단은 위임하지 않는다</h4><p>개인정보, 비용, 대상 사용자처럼 제품의 성격을 정하는 선택은 제가 결정했습니다.</p></div></li>
+  </ol>
+</div><div class="pg"><span>수치 출처: 저장소 코드·테스트 실행 결과, Claude Code 세션 기록</span><span>07 / 07</span></div></div>
+
+</body></html>

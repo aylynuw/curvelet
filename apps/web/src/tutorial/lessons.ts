@@ -62,11 +62,11 @@ const en: Lesson[] = [
   },
   {
     id: 'tools',
-    title: 'Calculator, Geometry, Worksheet',
+    title: 'Calculator, Geometry, Study',
     steps: [
       { text: 'The Calculator tool works one line at a time with a large answer, exact or decimal, and ans for the last answer.', tool: 'calc' },
       { text: 'Geometry builds with points, segments, circles, midpoints, perpendiculars and more. Drag a point and everything built on it follows. The pen straightens a rough circle or triangle.', tool: 'geo' },
-      { text: 'Worksheet makes printable problem sheets with figures from the graph.', tool: 'sheet' },
+      { text: 'Study has practice at three levels, up to 평가원-style exam questions with points and full solutions. Its Worksheet side prints problem sheets; Generate problems fills one for you.', tool: 'sheet' },
     ],
   },
   {
@@ -127,11 +127,11 @@ const ko: Lesson[] = [
   },
   {
     id: 'tools',
-    title: '계산기, 기하, 학습지',
+    title: '계산기, 기하, 학습',
     steps: [
       { text: '계산기는 한 줄씩 계산하고 큰 화면에 정확한 값이나 소수로 보여 줍니다. ans는 마지막 답입니다.', tool: 'calc' },
       { text: '기하에서는 점, 선분, 원, 중점, 수선 등으로 작도합니다. 점을 끌면 그 점으로 만든 도형이 따라오고, 펜은 대충 그린 원이나 삼각형을 반듯하게 바꿉니다.', tool: 'geo' },
-      { text: '학습지는 그래프 그림을 넣은 문제지를 만들어 인쇄합니다.', tool: 'sheet' },
+      { text: '학습에서는 기본, 심화, 평가원 스타일 세 난이도로 연습합니다. 평가원 스타일 문제는 배점과 해설이 있습니다. 학습지 쪽에서는 문제지를 인쇄하고, 문제 생성으로 한 번에 채울 수 있습니다.', tool: 'sheet' },
     ],
   },
   {
@@ -152,7 +152,7 @@ export const TUTORIAL_STRINGS = {
     progress: (done: number, all: number) => `${done} of ${all} done`,
     tryIt: 'Try it',
     added: (n: number) => `Added ${n} line${n === 1 ? '' : 's'}`,
-    open: { calc: 'Open Calculator', geo: 'Open Geometry', sheet: 'Open Worksheet' },
+    open: { calc: 'Open Calculator', geo: 'Open Geometry', sheet: 'Open Study' },
     markDone: 'Mark as done',
     done: 'Done',
     reset: 'Start over',
@@ -162,7 +162,7 @@ export const TUTORIAL_STRINGS = {
     progress: (done: number, all: number) => `${all}개 중 ${done}개 완료`,
     tryIt: '해 보기',
     added: (n: number) => `${n}줄을 추가했습니다`,
-    open: { calc: '계산기 열기', geo: '기하 열기', sheet: '학습지 열기' },
+    open: { calc: '계산기 열기', geo: '기하 열기', sheet: '학습 열기' },
     markDone: '완료로 표시',
     done: '완료',
     reset: '처음부터',

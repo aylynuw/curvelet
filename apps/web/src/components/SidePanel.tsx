@@ -5,8 +5,8 @@ import type { HistoryItem } from '../storage';
 import { MathText } from './MathText';
 import { NumberText } from './ResultView';
 
-export type Tab = 'lines' | 'definitions' | 'history' | 'functions' | 'practice' | 'tutorial';
-const TABS: Tab[] = ['lines', 'definitions', 'history', 'functions', 'practice', 'tutorial'];
+export type Tab = 'lines' | 'definitions' | 'history' | 'functions' | 'tutorial';
+const TABS: Tab[] = ['lines', 'definitions', 'history', 'functions', 'tutorial'];
 
 export function SidePanel({
   tab,
@@ -20,7 +20,6 @@ export function SidePanel({
   onClearHistory,
   children,
   footer,
-  practice,
   formulas,
   tutorial,
 }: {
@@ -37,8 +36,6 @@ export function SidePanel({
   children: ReactNode;
   /** under every tab: the keypad */
   footer?: ReactNode;
-  /** the Practice tab */
-  practice: ReactNode;
   /** the Formulas tab, with the function reference inside */
   formulas: ReactNode;
   /** the Tutorial tab */
@@ -125,7 +122,6 @@ export function SidePanel({
 
         <h2 className="visually-hidden">{t[tab]}</h2>
         {tab === 'lines' && children}
-        {tab === 'practice' && practice}
         {tab === 'functions' && formulas}
         {tab === 'tutorial' && tutorial}
       </div>

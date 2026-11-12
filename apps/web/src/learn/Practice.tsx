@@ -1,7 +1,9 @@
 import type { EvalSettings, Node } from '@math/engine';
 import { printNode } from '@math/engine';
-import { checkAnswer, nextProblem, type Problem, type Topic, type Verdict } from '@math/steps';
+import { checkAnswer, levelTopics, nextProblem, type Level, type Problem, type Topic, type Verdict } from '@math/steps';
 import { useRef, useState } from 'react';
+import type { Lang } from '../i18n';
+import { RichText } from '../teach/FigureView';
 import { latexToText } from '../math/latex';
 import { MathInput } from '../components/MathInput';
 import { LatexText, MathText } from '../components/MathText';
@@ -10,7 +12,17 @@ import type { MathfieldElement } from '../math/mathlive';
 import { StepsView, type IntegralAsk } from './StepsView';
 import type { LearnStrings } from './strings';
 
-const TOPICS: Topic[] = ['derivative', 'equation', 'integral'];
+const LEVELS: Level[] = ['basic', 'advanced', 'exam'];
+const PREF = 'curvelet.practice.v1';
+function loadPref(): { level: Level; topic: Topic } {
+  try {
+    const v = JSON.parse(localStorage.getItem(PREF) ?? 'null');
+    if (v && LEVELS.includes(v.level) && levelTopics(v.level).includes(v.topic)) return v;
+  } catch {
+    // the first visit
+  }
+  return { level: 'basic', topic: 'derivative' };
+}
 
 /** The problem as it is written in a book: d/dx(…), ∫ … dx, or the equation. */
 export function questionTex(p: Problem): string {
@@ -26,6 +38,9 @@ export function questionTex(p: Problem): string {
  */
 export function Practice({
   s,
+  lang,
+  onAddToSheet,
+  onMakeSheet,
   settings,
   keyboard,
   fieldRef,
@@ -34,6 +49,11 @@ export function Practice({
   onAnswer,
 }: {
   s: LearnStrings;
+  lang: Lang;
+  /** put this problem on the worksheet */
+  onAddToSheet: (p: Problem) => void;
+  /** fill the worksheet with problems like this one */
+  onMakeSheet: (level: Level, topic: Topic) => void;
   settings: EvalSettings;
   keyboard: 'text' | 'none';
   /** the answer field, so the on-screen keypad can type into it */
@@ -42,18 +62,25 @@ export function Practice({
   askIntegral: IntegralAsk;
   onAnswer: (listener: () => void) => () => void;
 }) {
-  const [topic, setTopic] = useState<Topic>('derivative');
-  const [problem, setProblem] = useState<Problem>(() => nextProblem('derivative'));
+  const [{ level, topic }, setPref] = useState(loadPref);
+  const [problem, setProblem] = useState<Problem>(() => nextProblem(topic, Math.random, level));
+  const exam = problem.value !== undefined;
   const [input, setInput] = useState('');
   const [verdict, setVerdict] = useState<Verdict | null>(null);
   const [revealed, setRevealed] = useState(false);
   const [steps, setSteps] = useState(false);
   const [score, setScore] = useState({ right: 0, tried: 0, counted: false, solved: false });
   const field = useRef<MathfieldElement | null>(null);
+  const [added, setAdded] = useState<number | null>(null);
 
-  const fresh = (t: Topic) => {
-    setTopic(t);
-    setProblem(nextProblem(t));
+  const fresh = (t: Topic, l: Level = level) => {
+    setPref({ level: l, topic: t });
+    try {
+      localStorage.setItem(PREF, JSON.stringify({ level: l, topic: t }));
+    } catch {
+      // kept for this visit
+    }
+    setProblem(nextProblem(t, Math.random, l));
     setInput('');
     setVerdict(null);
     setRevealed(false);
@@ -85,21 +112,37 @@ export function Practice({
 
   return (
     <div className="practice">
-      <div className="segmented practice__topics" role="group" aria-label={s.practice}>
-        {TOPICS.map((t) => (
-          <button key={t} type="button" aria-pressed={topic === t} onClick={() => fresh(t)}>
-            {s.topics[t]}
-          </button>
-        ))}
+      <div className="practice__choose">
+        <div className="segmented" role="group" aria-label={s.level}>
+          {LEVELS.map((l) => (
+            <button key={l} type="button" aria-pressed={level === l} onClick={() => fresh(levelTopics(l).includes(topic) ? topic : levelTopics(l)[0]!, l)}>
+              {s.levels[l]}
+            </button>
+          ))}
+        </div>
+        <div className="segmented" role="group" aria-label={s.topic}>
+          {levelTopics(level).map((t) => (
+            <button key={t} type="button" aria-pressed={topic === t} onClick={() => fresh(t)}>
+              {s.topics[t]}
+            </button>
+          ))}
+        </div>
       </div>
 
       <section className="practice__card" aria-labelledby="practice-task">
         <h3 id="practice-task" className="practice__task">
           {s.task[problem.topic]}
+          {exam && problem.points ? <span className="practice__points"> {lang === 'ko' ? `[${problem.points}점]` : `(${problem.points} points)`}</span> : null}
         </h3>
-        <p className="practice__question">
-          <LatexText latex={questionTex(problem)} label={problem.question} />
-        </p>
+        {exam ? (
+          <p className="practice__prompt">
+            <RichText text={problem.prompt![lang]} />
+          </p>
+        ) : (
+          <p className="practice__question">
+            <LatexText latex={questionTex(problem)} label={problem.question} />
+          </p>
+        )}
 
         <span className="practice__label" aria-hidden="true">
           {s.yourAnswer}
@@ -156,7 +199,38 @@ export function Practice({
             {problem.topic === 'integral' && ' + C'}
           </p>
         )}
-        {steps && <StepsView call={call} settings={settings} s={s} askIntegral={askIntegral} onAnswer={onAnswer} />}
+        {steps &&
+          (exam ? (
+            <section className="practice__solution" aria-label={s.solutionTitle}>
+              <h4 className="practice__solution-title">{s.solutionTitle}</h4>
+              <ol>
+                {problem.solution![lang].map((line, k) => (
+                  <li key={k}>
+                    <RichText text={line} />
+                  </li>
+                ))}
+              </ol>
+            </section>
+          ) : (
+            <StepsView call={call} settings={settings} s={s} askIntegral={askIntegral} onAnswer={onAnswer} />
+          ))}
+
+        <div className="practice__sheet">
+          <button
+            type="button"
+            className="btn btn--small btn--quiet"
+            onClick={() => {
+              onAddToSheet(problem);
+              setAdded(problem.seed);
+            }}
+            disabled={added === problem.seed}
+          >
+            {added === problem.seed ? s.addedToSheet : s.addToSheet}
+          </button>
+          <button type="button" className="btn btn--small btn--quiet" onClick={() => onMakeSheet(level, topic)}>
+            {s.makeSheet}
+          </button>
+        </div>
       </section>
 
       {score.tried > 0 && <p className="practice__score">{s.score(score.right, score.tried)}</p>}

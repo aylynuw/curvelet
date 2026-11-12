@@ -3,7 +3,7 @@ import type { Lang } from '../i18n';
 export type GeoTool =
   | 'move' | 'point' | 'segment' | 'line' | 'ray' | 'polygon' | 'circle' | 'compass'
   | 'midpoint' | 'perpendicular' | 'parallel' | 'bisector' | 'intersection'
-  | 'angle' | 'reflect' | 'rotate' | 'pen' | 'delete';
+  | 'angle' | 'reflect' | 'rotate' | 'pen' | 'delete' | 'select' | 'square' | 'regular';
 
 const en = {
   toolbar: 'Geometry tools',
@@ -12,6 +12,7 @@ const en = {
     move: 'Move', point: 'Point', segment: 'Segment', line: 'Line', ray: 'Ray', polygon: 'Polygon', circle: 'Circle', compass: 'Compass',
     midpoint: 'Midpoint', perpendicular: 'Perpendicular', parallel: 'Parallel', bisector: 'Bisector', intersection: 'Intersect',
     angle: 'Angle', reflect: 'Reflect', rotate: 'Rotate', pen: 'Pen', delete: 'Delete',
+    select: 'Select', square: 'Square', regular: 'Regular polygon',
   } satisfies Record<GeoTool, string>,
   /** what to click next, per tool and step */
   steps: {
@@ -33,14 +34,22 @@ const en = {
     rotate: ['Pick the point to turn.', 'Pick the centre.'],
     pen: ['Draw a line, circle or polygon by hand; it is straightened for you.'],
     delete: ['Click an object to delete it, with everything built on it.'],
+    select: ['Click objects (Shift adds more) or drag a box around them. Drag a selected object to move them together.'],
+    square: ['Pick the first corner.', 'Pick the next corner; the square is drawn to the left of that side.'],
+    regular: ['Pick the first corner.', 'Pick the next corner; the polygon is drawn to the left of that side.'],
   } satisfies Record<GeoTool, string[]>,
+  sides: 'Sides',
+  selected: (n: number) => `${n} selected`,
+  deleteSelected: 'Delete',
+  clearSelection: 'Deselect',
+  selectAll: 'Select all',
   degrees: 'Turn by',
   objects: 'Objects',
   empty: 'Nothing here yet. Pick a tool and click on the canvas.',
   kinds: {
     point: 'point', midpoint: 'midpoint', intersection: 'intersection', reflect: 'reflection', rotate: 'turned point',
     segment: 'segment', line: 'line', ray: 'ray', perpendicular: 'perpendicular', parallel: 'parallel', bisector: 'bisector',
-    circle: 'circle', compass: 'circle', polygon: 'polygon', angle: 'angle', text: 'label',
+    circle: 'circle', compass: 'circle', polygon: 'polygon', angle: 'angle', text: 'label', regular: 'regular polygon', vertex: 'corner',
   },
   of: (names: string) => `of ${names}`,
   length: 'length',
@@ -72,6 +81,7 @@ const ko: GeoStrings = {
     move: '이동', point: '점', segment: '선분', line: '직선', ray: '반직선', polygon: '다각형', circle: '원', compass: '컴퍼스',
     midpoint: '중점', perpendicular: '수선', parallel: '평행선', bisector: '수직이등분선', intersection: '교점',
     angle: '각', reflect: '대칭', rotate: '회전', pen: '펜', delete: '지우기',
+    select: '선택', square: '정사각형', regular: '정다각형',
   },
   steps: {
     move: ['점을 끌어 옮기거나 빈 곳을 끌어 화면을 옮깁니다. 스크롤로 확대합니다.'],
@@ -92,14 +102,22 @@ const ko: GeoStrings = {
     rotate: ['돌릴 점을 고르세요.', '회전 중심을 고르세요.'],
     pen: ['직선, 원, 다각형을 손으로 그리면 반듯하게 바꿔 줍니다.'],
     delete: ['지울 도형을 누르세요. 그 위에 만든 것도 함께 지워집니다.'],
+    select: ['도형을 누르거나(Shift로 여러 개) 상자를 끌어 고르세요. 고른 도형을 끌면 함께 움직입니다.'],
+    square: ['첫 꼭짓점을 고르세요.', '다음 꼭짓점을 고르세요. 그 변의 왼쪽에 정사각형이 그려집니다.'],
+    regular: ['첫 꼭짓점을 고르세요.', '다음 꼭짓점을 고르세요. 그 변의 왼쪽에 정다각형이 그려집니다.'],
   },
+  sides: '변의 수',
+  selected: (n) => `${n}개 선택`,
+  deleteSelected: '지우기',
+  clearSelection: '선택 해제',
+  selectAll: '모두 선택',
   degrees: '회전 각',
   objects: '도형',
   empty: '아직 없습니다. 도구를 고르고 작도판을 누르세요.',
   kinds: {
     point: '점', midpoint: '중점', intersection: '교점', reflect: '대칭점', rotate: '회전한 점',
     segment: '선분', line: '직선', ray: '반직선', perpendicular: '수선', parallel: '평행선', bisector: '수직이등분선',
-    circle: '원', compass: '원', polygon: '다각형', angle: '각', text: '글',
+    circle: '원', compass: '원', polygon: '다각형', angle: '각', text: '글', regular: '정다각형', vertex: '꼭짓점',
   },
   of: (names: string) => `${names}의`,
   length: '길이',
