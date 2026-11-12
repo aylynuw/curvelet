@@ -15,7 +15,7 @@ const SYMBOLS: Record<string, string> = {
 };
 const GREEK_NAMES: Record<string, string> = { 'π': 'pi', 'τ': 'tau', '√': 'sqrt', '∛': 'cbrt', '∞': 'inf' };
 
-const OPS = ['**', '!=', '<=', '>=', '+', '-', '*', '/', '^', '(', ')', '[', ']', '{', '}', ',', '=', '<', '>', '!', "'", '|'];
+const OPS = ['**', '!=', '<=', '>=', '+', '-', '*', '/', '^', '(', ')', '[', ']', '{', '}', ',', '=', '<', '>', '!', "'", '|', ':', ';'];
 
 const IDENT_START = /[\p{L}]/u;
 const IDENT_PART = /[\p{L}\p{N}_]/u;

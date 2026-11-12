@@ -30,6 +30,7 @@ const en: Lesson[] = [
     steps: [
       { text: 'Any line with x and y is drawn on the graph: functions, equations, inequalities, polar and parametric curves.', lines: ['y = x^2 - 2x', 'x^2 + y^2 = 9', 'y < sin(x)', 'r = 1 + cos(θ)'] },
       { text: 'Name a number and it gets a slider. Press play to watch the graph change; the slider icon sets its range and speed.', lines: ['a = 2', 'y = a sin(x)'] },
+      { text: 'Piecewise functions: type cases for a box with a value and its condition on each row (Tab moves, Enter adds a row), or write it out: {x < 0: -x, x^2}, -x if x < 0, x^2 otherwise, or {-x (x < 0), x^2 (x ≥ 0)}.', lines: ['y = {x < -1: -x, -1 ≤ x ≤ 1: x^2, 1}', 'f(x) = x + 3 if x < -2, x^2 otherwise'] },
       { text: 'Click a line’s coloured dot for any colour, dashes, thickness or to hide it. Click a curve on the graph for its roots and turning points.' },
       { text: 'Graph settings switch to a polar grid or π on the x-axis and take a typed window. Shift+drag zooms to a box.' },
     ],
@@ -95,6 +96,7 @@ const ko: Lesson[] = [
     steps: [
       { text: 'x와 y가 들어간 줄은 그래프에 그려집니다: 함수, 방정식, 부등식, 극좌표와 매개변수 곡선.', lines: ['y = x^2 - 2x', 'x^2 + y^2 = 9', 'y < sin(x)', 'r = 1 + cos(θ)'] },
       { text: '수에 이름을 붙이면 슬라이더가 생깁니다. 재생을 누르면 그래프가 움직이고, 슬라이더 아이콘으로 범위와 속도를 정합니다.', lines: ['a = 2', 'y = a sin(x)'] },
+      { text: '조각함수: cases를 입력하면 줄마다 값과 조건을 쓰는 칸이 생깁니다(Tab으로 이동, Enter로 줄 추가). 글로 써도 됩니다: {x < 0: -x, x^2}, -x if x < 0, x^2 otherwise, {-x (x < 0), x^2 (x ≥ 0)}.', lines: ['y = {x < -1: -x, -1 ≤ x ≤ 1: x^2, 1}', 'f(x) = x + 3 if x < -2, x^2 otherwise'] },
       { text: '줄의 색 점을 누르면 색, 점선, 굵기, 숨기기를 고릅니다. 그래프의 곡선을 누르면 근과 극값을 보여 줍니다.' },
       { text: '그래프 설정에서 극좌표 격자, x축 π 눈금, 보기 범위를 정합니다. Shift를 누른 채 끌면 그 영역을 확대합니다.' },
     ],

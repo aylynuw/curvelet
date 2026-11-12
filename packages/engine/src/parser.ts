@@ -13,6 +13,8 @@ export const PARENLESS_FUNCS = new Set([
 ]);
 const TRIG = new Set(['sin', 'cos', 'tan', 'sec', 'csc', 'cot']);
 const REL_OPS = new Set(['=', '<', '>', '<=', '>=', '!=']);
+/** words that join or open parts of a line, never names multiplied in */
+const WORDS = new Set(['let', 'const', 'if', 'else', 'otherwise', 'and', 'or']);
 
 /** Parse one line of input. */
 export function parse(src: string): Statement {
@@ -72,11 +74,11 @@ class Parser {
       return this.definition(first.value === 'let');
     }
 
-    const left = this.expr();
+    const left = this.value();
     const t = this.peek();
     if (t.type === 'op' && REL_OPS.has(t.value)) {
       this.next();
-      const right = this.expr();
+      const right = this.value();
       const restrict = this.restriction();
       this.expectEnd();
       return { kind: 'relation', op: t.value as RelOp, left, right, ...restrict };
@@ -125,21 +127,120 @@ class Parser {
       this.expectOp(')');
     }
     this.expectOp('=');
-    const body = this.expr();
+    const body = this.value();
     const restrict = this.restriction();
     this.expectEnd();
     return { kind: 'define', mutable, name, params, body, ...restrict };
   }
 
-  /** a function argument: an expression, or a comparison such as x^2 = 4 */
+  /** a function argument: an expression, or a comparison such as x^2 = 4 (or a chain, -1 < x < 2, with and/or) */
   private argument(): Node {
     const left = this.expr();
     const t = this.peek();
-    if (t.type === 'op' && REL_OPS.has(t.value)) {
-      this.next();
-      return { type: 'rel', op: t.value as RelOp, left, right: this.expr() };
-    }
+    if (t.type === 'op' && REL_OPS.has(t.value)) return this.conditionFrom(left);
     return left;
+  }
+
+  /**
+   * A condition, its first expression already read: x < 0, -1 < x <= 2 (a chain),
+   * x > 0 and x < 3, x < -1 or x > 1. One comparison stays a `rel`; more become and(…)/or(…).
+   */
+  private conditionFrom(first: Node): Node {
+    const chain = (left: Node): Node => {
+      const parts: Node[] = [];
+      for (;;) {
+        const t = this.peek();
+        if (!(t.type === 'op' && REL_OPS.has(t.value))) break;
+        this.next();
+        const right = this.expr();
+        parts.push({ type: 'rel', op: t.value as RelOp, left, right });
+        left = right;
+      }
+      if (!parts.length) throw new MathError('A condition compares, like x < 0', this.peek().pos);
+      return parts.length === 1 ? parts[0]! : { type: 'call', name: 'and', args: parts, primes: 0 };
+    };
+    let node = chain(first);
+    for (;;) {
+      const t = this.peek();
+      if (t.type !== 'ident' || (t.value !== 'and' && t.value !== 'or')) return node;
+      this.next();
+      const next = chain(this.expr());
+      node = { type: 'call', name: t.value, args: [node, next], primes: 0 };
+    }
+  }
+
+  /** is the bracket at the cursor a condition, like the (x < 0) in x^2 (x < 0)? */
+  private bracketHoldsCondition(): boolean {
+    if (!this.isOp('(')) return false;
+    let depth = 0;
+    for (let k = this.i; k < this.tokens.length; k++) {
+      const t = this.tokens[k]!;
+      if (t.type === 'eof') return false;
+      if (t.type !== 'op') continue;
+      if (t.value === '(' || t.value === '[' || t.value === '{') depth++;
+      else if (t.value === ')' || t.value === ']' || t.value === '}') {
+        depth--;
+        if (depth === 0) return false;
+      } else if (depth === 1 && REL_OPS.has(t.value)) return true;
+    }
+    return false;
+  }
+
+  /**
+   * Cases, as a piecewise(cond, value, cond, value, …, otherwise) call. One branch is
+   * any of: `cond: value`, `value if cond`, `value (cond)`, and the last may be a bare
+   * value (or `value otherwise`, `else value`) for everywhere else. Branches are
+   * separated by , or ; and the list ends at `end` (a closing brace) or the line's end.
+   */
+  private cases(first: Node | null, end: '}' | null): Node {
+    const args: Node[] = [];
+    let fallback: Node | null = null;
+    let item: Node | null = first;
+    for (;;) {
+      if (item === null) {
+        if (this.peek().type === 'ident' && (this.peek().value === 'else' || this.peek().value === 'otherwise')) {
+          this.next();
+          if (this.isOp(':')) this.next();
+        }
+        item = this.expr();
+      }
+      const t = this.peek();
+      if (t.type === 'op' && REL_OPS.has(t.value)) {
+        // cond: value
+        const cond = this.conditionFrom(item);
+        this.expectOp(':');
+        args.push(cond, this.expr());
+      } else if (t.type === 'ident' && t.value === 'if') {
+        this.next();
+        args.push(this.conditionFrom(this.expr()), item);
+      } else if (this.bracketHoldsCondition()) {
+        this.next();
+        const cond = this.conditionFrom(this.expr());
+        this.expectOp(')');
+        args.push(cond, item);
+      } else {
+        if (t.type === 'ident' && (t.value === 'otherwise' || t.value === 'else')) this.next();
+        fallback = item;
+      }
+      item = null;
+      if ((this.isOp(',') || this.isOp(';')) && fallback === null) {
+        this.next();
+        continue;
+      }
+      break;
+    }
+    if (end) this.expectOp(end);
+    if (!args.length) throw new MathError('Cases need a condition, like {x < 0: -x, x}', this.peek().pos);
+    if (fallback) args.push(fallback);
+    return { type: 'call', name: 'piecewise', args, primes: 0 };
+  }
+
+  /** a line's value: an expression, or cases written out (-x if x < 0, x otherwise; x^2 (x < 0), …) */
+  private value(): Node {
+    const v = this.expr();
+    const t = this.peek();
+    if ((t.type === 'ident' && t.value === 'if') || this.bracketHoldsCondition()) return this.cases(v, null);
+    return v;
   }
 
   expr(): Node {
@@ -168,11 +269,11 @@ class Parser {
 
   private startsImplicitFactor(): boolean {
     const t = this.peek();
-    if (t.type === 'ident') return t.value !== 'let' && t.value !== 'const';
+    if (t.type === 'ident') return !WORDS.has(t.value);
     if (t.type === 'num') {
       throw new MathError('Missing operator between numbers', t.pos);
     }
-    if (t.type === 'op') return t.value === '(' || (t.value === '|' && this.absDepth === 0);
+    if (t.type === 'op') return (t.value === '(' && !this.bracketHoldsCondition()) || (t.value === '|' && this.absDepth === 0);
     return false;
   }
 
@@ -248,6 +349,14 @@ class Parser {
       this.expectOp(')');
       return point ?? inner;
     }
+    if (t.type === 'op' && t.value === '{') {
+      // {x < 0: -x, x}: cases
+      const saved = this.absDepth;
+      this.absDepth = 0;
+      const node = this.cases(null, '}');
+      this.absDepth = saved;
+      return node;
+    }
     if (t.type === 'op' && t.value === '|') {
       this.absDepth++;
       const inner = this.expr();
@@ -272,7 +381,8 @@ class Parser {
       this.next();
       primes++;
     }
-    if (this.isOp('(')) {
+    // x (x < 0) in cases is x for x < 0, not a call of x: a one-letter name never takes a condition
+    if (this.isOp('(') && !(/^[a-zA-Z](_\w+)?$/.test(name) && primes === 0 && this.bracketHoldsCondition())) {
       this.next();
       const args: Node[] = [];
       const saved = this.absDepth;

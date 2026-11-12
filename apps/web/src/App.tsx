@@ -657,6 +657,7 @@ export function App() {
       else if (k.action === 'backspace') mf.executeCommand('deleteBackward');
       else if (k.action === 'left') mf.executeCommand('moveToPreviousChar');
       else if (k.action === 'right') mf.executeCommand('moveToNextChar');
+      else if (k.action === 'row') mf.executeCommand('addRowAfter');
       else mf.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
       return;
     }
@@ -668,6 +669,7 @@ export function App() {
       mf.executeCommand('deleteBackward');
     } else if (k.action === 'left') mf.executeCommand('moveToPreviousChar');
     else if (k.action === 'right') mf.executeCommand('moveToNextChar');
+    else if (k.action === 'row') mf.executeCommand('addRowAfter');
     else commitLine(index);
   };
 

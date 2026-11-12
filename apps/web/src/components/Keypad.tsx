@@ -9,7 +9,7 @@ import type { Strings } from '../i18n';
 export type KeyAction =
   | { type: string }
   | { latex: string }
-  | { action: 'left' | 'right' | 'backspace' | 'enter' };
+  | { action: 'left' | 'right' | 'backspace' | 'enter' | 'row' };
 
 interface Key {
   label: string;
@@ -64,6 +64,9 @@ const KEYS: Record<KeypadTab, Key[]> = {
     { label: 'f′(x)', aria: (t) => t.keyPrime, do: { type: "'" }, kind: 'op' },
     { label: '[2×2]', aria: (t) => t.keyMatrix(2), do: { latex: '\\begin{pmatrix}#?&#?\\\\#?&#?\\end{pmatrix}' }, kind: 'fn' },
     { label: '[3×3]', aria: (t) => t.keyMatrix(3), do: { latex: '\\begin{pmatrix}#?&#?&#?\\\\#?&#?&#?\\\\#?&#?&#?\\end{pmatrix}' }, kind: 'fn' },
+    { label: '{ ⋯', aria: (t) => t.keyPiecewise, do: { latex: '\\begin{cases}#? & #?\\\\#? & #?\\end{cases}' }, kind: 'fn' },
+    { label: '+ ⋯', aria: (t) => t.keyAddRow, do: { action: 'row' }, kind: 'op' },
+    op('<'), op('>'), tex('≤', '\\le '), tex('≥', '\\ge '),
     fn('det'), fn('inv'), fn('transpose', 'Aᵀ'),
     fn('solve'), fn('factor'), fn('expand'), fn('simplify'), fn('taylor'), tex('∞', '\\infty'),
   ],
@@ -71,6 +74,8 @@ const KEYS: Record<KeypadTab, Key[]> = {
     op('<'), op('>'), tex('≤', '\\le '), tex('≥', '\\ge '), op('='), tex('°', '^{\\circ}'),
     tex('π', '\\pi'), op('e'), op('i'), tex('∞', '\\infty'), tex('θ', '\\theta'), tex('τ', '\\tau'),
     op('('), op(')'), op('['), op(']'), { label: '{ }', aria: (t) => t.keyRestrict, do: { latex: '\\lbrace #?\\rbrace ' }, kind: 'op' }, op(','),
+    { label: '{ ⋯', aria: (t) => t.keyPiecewise, do: { latex: '\\begin{cases}#? & #?\\\\#? & #?\\end{cases}' }, kind: 'fn' },
+    { label: '+ ⋯', aria: (t) => t.keyAddRow, do: { action: 'row' }, kind: 'op' }, op(':'), op(';'), tex('and', '\\operatorname{and}\\:'), tex('if', '\\operatorname{if}\\:'),
     { label: '(x, y)', aria: (t) => t.keyPoint, do: { latex: '\\left(#?,#?\\right)' }, kind: 'fn' },
     tex('|x|', '\\left|#?\\right|'), tex('×', '\\cdot'), op('÷', '/'), { label: 'xⁿ', aria: (t) => t.power, do: { type: '^' }, kind: 'op' }, op('%'),
   ],
@@ -119,6 +124,7 @@ export function Keypad({ t, onKey }: { t: Strings; onKey: (k: KeyAction) => void
       type="button"
       className={`key${k.kind ? ` key--${k.kind}` : ''}`}
       aria-label={k.aria?.(t)}
+      title={k.aria?.(t)}
       // keep focus in the line being edited
       onPointerDown={(e) => e.preventDefault()}
       onClick={() => onKey(k.do)}

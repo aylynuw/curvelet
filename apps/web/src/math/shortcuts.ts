@@ -20,6 +20,9 @@ const TEMPLATES: Record<string, string> = {
   cbrt: '\\sqrt[3]{#?}',
   nthroot: '\\sqrt[#?]{#?}',
   binom: '\\binom{#?}{#?}',
+  // piecewise: a value and its condition on each row (Enter adds a row)
+  cases: '\\begin{cases}#? & #?\\\\#? & #?\\end{cases}',
+  piecewise: '\\begin{cases}#? & #?\\\\#? & #?\\end{cases}',
   ...Object.fromEntries(ACCENTS.map((a) => [a, `\\${a}{#?}`])),
 };
 
@@ -40,6 +43,12 @@ const PLAIN: Record<string, string> = {
   div: '\\div',
   cdot: '\\cdot',
   degree: '^{\\circ}',
+  // the words of cases, upright with a space after
+  if: '\\operatorname{if}\\:',
+  and: '\\operatorname{and}\\:',
+  or: '\\operatorname{or}\\:',
+  otherwise: '\\operatorname{otherwise}',
+  else: '\\operatorname{else}\\:',
 };
 
 /**
@@ -52,6 +61,8 @@ const AT_WORD_END = new Set([
   'in', 'to', 'ne', 'le', 'ge', 'll', 'gg', 'ni', 'pm', 'mp', 'Re', 'Im', 'wp', 'ell', 'top', 'bot', 'cap', 'cup', 'neg', 'sim', 'star',
   'circ', 'angle', 'square', 'triangle', 'degree', 'wedge', 'vee', 'land', 'lor', 'iff', 'gets', 'times', 'div', 'dot', 'bar', 'hat',
   'vec', 'tilde', 'parallel', 'subset', 'because', 'therefore', 'exists', 'implies', 'prec', 'succ', 'bullet', 'int', 'lim', 'sum', 'prod',
+  // words in cases: only a whole word (for, order, iff stay as typed)
+  'if', 'and', 'or', 'otherwise', 'else',
 ]);
 
 /** keystroke-to-LaTeX shortcuts: what MathLive converts as soon as it is typed */

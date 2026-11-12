@@ -134,6 +134,11 @@ describe('equations', () => {
     expect(text(await one('x^2 > 4'))).toBe('x < -2 or x > 2');
     expect(text(await one('solve(x^2 - 1 <= 0)'))).toBe('-1 ≤ x ≤ 1');
     expect(text(await one('solve(x ≠ 2)'))).toBe('x ≠ 2');
+  });
+
+  it('works with piecewise functions', async () => {
+    expect(text(await one('integrate({x < 0: -x, x^2}, x, -1, 3)'))).toBe('9.5');
+    expect(text(await one('limit({x < 0: -x, x^2}, x, 0)'))).toBe('0');
     expect(text(await one('solve(x^2 != 4)'))).toBe('x ≠ -2 and x ≠ 2');
     expect(await one('x^2 + 1 ≠ 0')).toMatchObject({ status: 'solved', special: 'all' });
   });

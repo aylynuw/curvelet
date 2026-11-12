@@ -1,7 +1,7 @@
 import { liftPower, MathError, type Node } from './ast';
 import { factorial, logBase, type AngleUnit } from './builtins';
 import { Complex } from './complex';
-import { splitName } from './evaluate';
+import { compareReal, splitName } from './evaluate';
 import { binomPdf, chiSqPdf, normalPdf, poissonPdf, tPdf } from './stats';
 import { substitute } from './symbolic';
 
@@ -18,6 +18,18 @@ export interface CompileContext {
   /** a function computed natively (a fitted model), or undefined */
   native?(name: string): ((x: number) => number) | undefined;
   angle: AngleUnit;
+}
+
+/** a condition in cases: a comparison, or and(…)/or(…) of them, as a test on the graph variables */
+function compileCondition(cond: Node, c: (n: Node) => RealFn): (v: number[]) => boolean {
+  if (cond.type === 'call' && (cond.name === 'and' || cond.name === 'or')) {
+    const parts = cond.args.map((a) => compileCondition(a, c));
+    return cond.name === 'and' ? (v) => parts.every((p) => p(v)) : (v) => parts.some((p) => p(v));
+  }
+  if (cond.type !== 'rel') throw new MathError('A case needs a condition, like x < 0');
+  const [a, b] = [c(cond.left), c(cond.right)];
+  const op = cond.op;
+  return (v) => compareReal(op, a(v), b(v));
 }
 
 const CONST: Record<string, number> = { pi: Math.PI, e: Math.E, tau: 2 * Math.PI, inf: Infinity };
@@ -136,6 +148,20 @@ function compile(node: Node, ctx: CompileContext, fns: Record<string, (a: number
         }
         const body = substitute(user.body, new Map(user.params.map((p, k) => [p, node.args[k]!])));
         return compile(body, ctx, fns, depth + 1);
+      }
+      if (node.name === 'piecewise' || node.name === 'if') {
+        // the first branch whose condition holds; no branch (and no otherwise): no graph there
+        const conds: ((v: number[]) => boolean)[] = [];
+        const values: RealFn[] = [];
+        for (let k = 0; k + 1 < node.args.length; k += 2) {
+          conds.push(compileCondition(node.args[k]!, c));
+          values.push(c(node.args[k + 1]!));
+        }
+        const rest = node.args.length % 2 === 1 ? c(node.args[node.args.length - 1]!) : null;
+        return (v) => {
+          for (let k = 0; k < conds.length; k++) if (conds[k]!(v)) return values[k]!(v);
+          return rest ? rest(v) : NaN;
+        };
       }
       const args = node.args.map(c);
       // x(1 - x) with x a variable: multiplication

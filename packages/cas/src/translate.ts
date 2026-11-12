@@ -60,6 +60,16 @@ export function toPython(node: Node, s: EvalSettings, op = 'this'): string {
       const log = /^log_(\d+)$/.exec(name);
       if (log) return `log(${one()}, ${log[1]})`;
       switch (name) {
+        case 'piecewise':
+        case 'if': {
+          // SymPy's Piecewise((value, cond), …, (otherwise, True))
+          const parts: string[] = [];
+          for (let k = 0; k + 1 < a.length; k += 2) parts.push(`(${a[k + 1]}, ${a[k]})`);
+          if (a.length % 2 === 1) parts.push(`(${a[a.length - 1]}, True)`);
+          return `Piecewise(${parts.join(', ')})`;
+        }
+        case 'and': return `And(${a.join(', ')})`;
+        case 'or': return `Or(${a.join(', ')})`;
         case 'sin': case 'cos': case 'tan': case 'sec': case 'csc': case 'cot':
           return `${name}(${deg(one())})`;
         case 'arcsin': case 'asin': return toDeg(`asin(${one()})`);

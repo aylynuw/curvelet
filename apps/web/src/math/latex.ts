@@ -135,6 +135,30 @@ function splitTop(tex: string): string[] {
 }
 
 /** Plain text of a line → LaTeX for the editor. Text the lexer can't read is kept as text. */
+/**
+ * The rows of a cases block as text: {x < 0: -x, x >= 0: x^2}. A condition may be written
+ * x < 0, (x < 0), if x < 0, x < 0일 때; an empty one (or otherwise, else, 그 외) is everywhere else.
+ */
+function casesText(inner: string): string {
+  const branches: string[] = [];
+  let fallback: string | null = null;
+  for (const row of inner.split(/\\\\/)) {
+    const [rawValue = '', rawCond = ''] = row.split('&');
+    const value = latexToText(rawValue).trim();
+    if (!value) continue;
+    let cond = latexToText(rawCond.replace(/\\(?:text|mathrm|operatorname)\{\s*(?:if|when|for)\s*\}/g, ''))
+      .trim()
+      .replace(/^(?:if|when|for)\s+/i, '')
+      .replace(/\s*(?:일\s*때|인\s*경우)\s*$/u, '')
+      .trim();
+    if (/^\(.*\)$/.test(cond)) cond = cond.slice(1, -1).trim();
+    if (!cond || /^(?:otherwise|else|그\s*외|나머지)$/iu.test(cond)) fallback = value;
+    else branches.push(`${cond}: ${value}`);
+  }
+  if (fallback !== null) branches.push(fallback);
+  return `{${branches.join(', ')}}`;
+}
+
 export function textToLatex(text: string, { display = false }: { display?: boolean } = {}): string {
   let tokens: Token[];
   try {
@@ -191,7 +215,11 @@ export function textToLatex(text: string, { display = false }: { display?: boole
       if (m) return postfix(m);
     }
     if (t.value === '[') return postfix(group('[', ']'));
-    if (t.value === '{') return postfix(group('{', '}'));
+    if (t.value === '{') {
+      const cases = casesTex();
+      if (cases) return postfix(cases);
+      return postfix(group('{', '}'));
+    }
     if (t.value === '|') {
       i++;
       const inner = seq(['|']);
@@ -204,6 +232,41 @@ export function textToLatex(text: string, { display = false }: { display?: boole
       return `${t.value}${a ?? ''}`;
     }
     return null;
+  };
+
+  /** {cond: value, …, otherwise} as \begin{cases}value & (cond)\\…\end{cases}, or null when the braces hold no : */
+  const casesTex = (): string | null => {
+    // a colon at the top level of these braces makes them cases
+    let depth = 0;
+    let colon = false;
+    for (let k = i; k < tokens.length; k++) {
+      const v = tokens[k]!;
+      if (v.type === 'eof') break;
+      if (v.type !== 'op') continue;
+      if (v.value === '(' || v.value === '[' || v.value === '{') depth++;
+      else if (v.value === ')' || v.value === ']' || v.value === '}') {
+        depth--;
+        if (depth === 0) break;
+      } else if (depth === 1 && v.value === ':') colon = true;
+    }
+    if (!colon) return null;
+    i++; // {
+    const rows: string[] = [];
+    for (;;) {
+      const first = seq([':', ',', ';', '}']);
+      if (isOp(':')) {
+        i++;
+        const value = seq([',', ';', '}']);
+        rows.push(`${value}&(${first})`);
+      } else if (first.trim()) rows.push(`${first}&`);
+      if (isOp(',') || isOp(';')) {
+        i++;
+        continue;
+      }
+      if (isOp('}')) i++;
+      break;
+    }
+    return `\\begin{cases}${rows.join('\\\\')}\\end{cases}`;
   };
 
   /** f(a, b, c) → each argument as LaTeX, the brackets consumed */
@@ -559,6 +622,10 @@ function convert(latex: string): Piece[] {
       const inner = r.until(['\\end']);
       r.next();
       r.arg();
+      if (/cases$/.test(env)) {
+        push(casesText(inner), 'cmd');
+        continue;
+      }
       const rows = inner.split(/\\\\/).map((row) => row.split('&').map((c) => toText(c))).filter((row) => row.some((c) => c !== ''));
       if (/matrix$/.test(env)) push(`[${rows.map((row) => `[${row.join(', ')}]`).join(', ')}]`, 'cmd');
       else push(rows.map((row) => row.join(' ')).join(', '), 'word');
@@ -729,8 +796,11 @@ function tidy(text: string): string {
     const c = text[k]!;
     if (c === '=' || c === '<' || c === '>' || c === '≠' || SPACED.has(c)) {
       out = `${out.trimEnd()} ${c} `;
-    } else if (c === ',') {
-      out = `${out.trimEnd()}, `;
+    } else if (c === ',' || c === ';') {
+      out = `${out.trimEnd()}${c} `;
+    } else if (c === ':') {
+      // f: ℝ → ℝ, and a case's condition: its value
+      out = `${out.trimEnd()}: `;
     } else if ((c === '+' || c === '-') && /[\p{L}\p{N}_.)\]|!'}]/u.test(lastSig()) && !/\d[eE]$/.test(out.trimEnd()) && !/[\^]$/.test(out.trimEnd())) {
       out = `${out.trimEnd()} ${c} `;
     } else if (c === ' ') {
@@ -745,5 +815,23 @@ function tidy(text: string): string {
 
 /** LaTeX from the editor → the line's plain text. */
 export function latexToText(latex: string): string {
-  return tidy(toText(latex));
+  return conditionBrackets(tidy(toText(latex)));
+}
+
+/** x^2*(x >= 0): a bracket holding a condition is a case's condition, not a factor, so it loses the * */
+function conditionBrackets(text: string): string {
+  let out = text;
+  for (let k = out.indexOf('*('); k >= 0; k = out.indexOf('*(', k + 1)) {
+    let depth = 0;
+    let rel = false;
+    for (let j = k + 1; j < out.length; j++) {
+      const c = out[j]!;
+      if (c === '(' || c === '[' || c === '{') depth++;
+      else if (c === ')' || c === ']' || c === '}') {
+        if (--depth === 0) break;
+      } else if (depth === 1 && /[<>=≠≤≥]/.test(c)) rel = true;
+    }
+    if (rel) out = `${out.slice(0, k)} ${out.slice(k + 1)}`;
+  }
+  return out;
 }

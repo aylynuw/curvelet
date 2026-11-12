@@ -24,7 +24,7 @@ export const EMPTY_ENV: Env = { value: () => undefined, func: () => undefined };
  * Functions whose arguments aren't all plain values: seq binds its variable,
  * iterate and cobweb take a function's name, the fields have free x and y.
  */
-export const SPECIAL_FORMS = new Set(['seq', 'iterate', 'cobweb', 'slopefield', 'vectorfield']);
+export const SPECIAL_FORMS = new Set(['seq', 'iterate', 'cobweb', 'slopefield', 'vectorfield', 'piecewise', 'if', 'and', 'or']);
 export const FIELD_FORMS = new Set(['slopefield', 'vectorfield']);
 
 const LIMIT = 10000;
@@ -36,6 +36,20 @@ const LIMIT = 10000;
  *  2. otherwise a run of single letters that are all known is a product: `ab` → a·b
  *  3. otherwise null (not defined)
  */
+/** a < b and the like, with = and ≠ forgiving rounding */
+export function compareReal(op: string, a: number, b: number): boolean {
+  const eq = Math.abs(a - b) <= 1e-9 * Math.max(1, Math.abs(a), Math.abs(b));
+  switch (op) {
+    case '=': return eq;
+    case '!=': return !eq;
+    case '<': return a < b && !eq;
+    case '>': return a > b && !eq;
+    case '<=': return a < b || eq;
+    case '>=': return a > b || eq;
+    default: return false;
+  }
+}
+
 export function splitName(name: string, isKnown: (n: string) => boolean): string[] | null {
   if (isKnown(name)) return [name];
   const letters = [...name];
@@ -118,6 +132,28 @@ class Evaluator {
     }
   }
 
+  /** piecewise(cond, value, …, otherwise): the first branch whose condition holds */
+  private piecewise(args: Node[], env: Env): Value {
+    for (let k = 0; k + 1 < args.length; k += 2) if (this.holds(args[k]!, env)) return this.eval(args[k + 1]!, env);
+    if (args.length % 2 === 1) return this.eval(args[args.length - 1]!, env);
+    throw new MathError('No case covers this value');
+  }
+
+  /** a condition: a comparison, or and(…)/or(…) of them */
+  private holds(cond: Node, env: Env): boolean {
+    if (cond.type === 'call' && (cond.name === 'and' || cond.name === 'or')) {
+      return cond.name === 'and' ? cond.args.every((c) => this.holds(c, env)) : cond.args.some((c) => this.holds(c, env));
+    }
+    if (cond.type !== 'rel') throw new MathError('A case needs a condition, like x < 0');
+    const real = (n: Node) => {
+      const v = this.eval(n, env);
+      if (v.kind !== 'num' || !v.z.isReal()) throw new MathError('A condition compares real numbers');
+      return v.z.re;
+    };
+    const [a, b] = [real(cond.left), real(cond.right)];
+    return compareReal(cond.op, a, b);
+  }
+
   /** [1, 2, 3] is a list; [[1, 2], [3, 4]] (lists of equal length) is a matrix */
   private list(items: Value[]): Value {
     if (items.length === 0) return list([]);
@@ -191,6 +227,8 @@ class Evaluator {
       return this.eval(user.body, local);
     }
 
+    if (name === 'piecewise' || name === 'if') return this.piecewise(node.args, env);
+    if (name === 'and' || name === 'or') throw new MathError(`${name} joins conditions inside cases, like {x > 0 and x < 2: 1, 0}`);
     if (name === 'seq') return this.seq(node, env);
     if (name === 'iterate' || name === 'cobweb') return this.iterate(node, env);
     if (FIELD_FORMS.has(name)) throw new MathError(`${name} is drawn on the graph and has no value of its own`);

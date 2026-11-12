@@ -138,9 +138,26 @@ export function MathInput({
         live.current.onMoveLine(e.key === 'ArrowUp' ? -1 : 1);
         return;
       }
+      // the cursor in a cases block: the line has one and the cursor isn't past its end
+      // (MathLive flattens a range's LaTeX, so where the block starts can't be read from it)
+      const inCases = () => mf.getValue('latex').includes('\\begin{cases}') && mf.position < mf.lastOffset;
+      // inside cases, Tab goes to the next box (value → condition → next row), as in a table
+      if (e.key === 'Tab' && inCases()) {
+        const at = mf.position;
+        mf.executeCommand(e.shiftKey ? 'moveToPreviousPlaceholder' : 'moveToNextPlaceholder');
+        if (mf.position === at) mf.executeCommand(e.shiftKey ? 'moveToPreviousChar' : 'moveToNextChar');
+        e.preventDefault();
+        e.stopPropagation();
+        return;
+      }
       if (e.key === 'Enter' && !e.shiftKey) {
         e.preventDefault();
         e.stopPropagation();
+        // inside cases: Enter adds a row below
+        if (inCases()) {
+          mf.executeCommand('addRowAfter');
+          return;
+        }
         live.current.onEnter();
       } else if (e.key === 'Backspace' && mf.value === '') {
         e.preventDefault();
