@@ -43,6 +43,8 @@ import { FIGURE_TEMPLATES, type FigureTemplate, type Range } from '../teach/temp
 import type { TeachStrings } from '../teach/strings';
 import type { Lang } from '../i18n';
 import { Explain } from '../learn/Explain';
+import { MathInput } from '../components/MathInput';
+import { plainGuide, prettyGuide } from './guideText';
 import type { LearnStrings } from '../learn/strings';
 
 // three.js loads only when the 3D view is opened
@@ -172,7 +174,24 @@ export function GraphPanel({
   /** exam lengths: where each is, the one picked, the one being retyped */
   const [guideSpots, setGuideSpots] = useState<{ ref: string; text: string; x: number; y: number; w: number; h: number }[]>([]);
   const [guideSel, setGuideSel] = useState<string | null>(null);
-  const [guideEdit, setGuideEdit] = useState<string | null>(null);
+  const [guideEdit, setGuideEditState] = useState<string | null>(null);
+  /** what is being typed for a length, written as a line is (integrate(f(x), x), sqrt(3)/2) */
+  const [guideDraft, setGuideDraft] = useState('');
+  const setGuideEdit = (ref: string | null) => {
+    if (ref) {
+      const own = figure.guides?.[ref];
+      setGuideDraft(typeof own === 'string' ? own : plainGuide(guideSpots.find((q) => q.ref === ref)?.text ?? ''));
+    }
+    setGuideEditState(ref);
+  };
+  const commitGuide = (ref: string) => {
+    if (guideEdit !== ref) return;
+    const v = guideDraft.trim();
+    setGuide(ref, v ? v : null);
+    setGuideEditState(null);
+    setGuideSel(null);
+    wrapRef.current?.querySelector<HTMLCanvasElement>('canvas')?.focus();
+  };
   const setGuide = (ref: string, text: string | null | undefined) => {
     const next = { ...(figure.guides ?? {}) };
     if (text === undefined) delete next[ref];
@@ -203,7 +222,8 @@ export function GraphPanel({
     piTicks: figure.piTicks,
     pointLabels: figure.pointLabels,
     // fractions beside points when numbers are shown exactly (11/5, not 2.2)
-    guideText: figure.guides,
+    // typed lengths are kept as written and printed as an exam sets them
+    guideText: figure.guides && Object.fromEntries(Object.entries(figure.guides).map(([k, v]) => [k, v === null ? null : prettyGuide(v)])),
     coord: numberForm === 'exact' ? (n: number) => (Number.isInteger(n) ? String(n) : prettyExact(toFraction(n, 1000) ?? exactNumber(n)) ?? coordinate(n)) : undefined,
   };
 
@@ -433,7 +453,7 @@ export function GraphPanel({
       exam
         ? scene.labels.flatMap((l) => {
             if (!l.ref) return [];
-            const tall = /^[\u2212-]?\d*[√π]?\d*\/\d+$/.test(l.text);
+            const tall = /^[\u2212-]?[^/\s()∫]+\/[^/\s()]+$/.test(l.text);
             const h = tall ? 30 : 18;
             const w = Math.max(16, (tall ? Math.max(...l.text.replace(/^[\u2212-]/, '').split('/').map((s) => s.length)) + 1.5 : l.text.length) * 8.5);
             const x = l.anchor === 'start' ? l.x : l.anchor === 'middle' ? l.x - w / 2 : l.x - w;
@@ -906,26 +926,35 @@ export function GraphPanel({
     <>
       {guideSpots.map((s) =>
         guideEdit === s.ref ? (
-          <input
+          <div
             key={s.ref}
             className="gguide__input"
-            style={{ left: s.x - 6, top: s.y + s.h / 2 - 15, width: Math.max(64, s.w + 24) }}
-            defaultValue={s.text.replace(/\u2212/g, '-')}
-            autoFocus
-            onFocus={(e) => e.currentTarget.select()}
+            style={{ left: s.x - 6, top: s.y + s.h / 2 - 18, minWidth: Math.max(96, s.w + 24) }}
             onKeyDown={(e) => {
-              if (e.key === 'Enter') {
-                const v = e.currentTarget.value.trim();
-                setGuide(s.ref, v ? v : null);
-                setGuideEdit(null);
-                setGuideSel(null);
-                wrapRef.current?.querySelector<HTMLCanvasElement>('canvas')?.focus();
-              } else if (e.key === 'Escape') {
+              if (e.key === 'Escape') {
+                e.stopPropagation();
                 setGuideEdit(null);
               }
             }}
-            onBlur={() => setGuideEdit(null)}
-          />
+            onBlur={(e) => {
+              // leaving the field keeps what was typed, as Enter does
+              if (!e.currentTarget.contains(e.relatedTarget as Node | null)) commitGuide(s.ref);
+            }}
+          >
+            <MathInput
+              value={guideDraft}
+              onChange={setGuideDraft}
+              label={t.guideLabel(s.text)}
+              keyboard="text"
+              fieldRef={(el) => {
+                if (el && !el.hasFocus()) requestAnimationFrame(() => el.focus());
+              }}
+              onFocus={() => {}}
+              onEnter={() => commitGuide(s.ref)}
+              onBackspaceEmpty={() => {}}
+              onMoveOut={() => {}}
+            />
+          </div>
         ) : (
           <button
             key={s.ref}

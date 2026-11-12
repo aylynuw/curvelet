@@ -490,8 +490,8 @@ function angleMark(a: Pt, b: Pt, c: Pt, right: boolean, v: Viewport, r: number):
 /** an exam label that is a fraction, set as one (sign, numerator, denominator) */
 export function stackedFraction(l: Pick<Label, 'kind' | 'text'>): [string, string, string] | null {
   if (l.kind !== 'guide') return null;
-  const m = l.text.match(/^([\u2212-]?)(\d*[√π]?\d*)\/(\d+)$/);
-  if (m && !/\d|π/.test(m[2]!)) return null;
+  // a/b with no spaces or brackets: 11/5, √3/2, π/6, a/2
+  const m = l.text.match(/^([\u2212-]?)([^/\s()∫]+)\/([^/\s()]+)$/);
   return m ? [m[1] ? '\u2212' : '', m[2]!, m[3]!] : null;
 }
 
