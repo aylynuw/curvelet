@@ -61,7 +61,7 @@ export function typedLength(l: number): Measure {
   return { value: l, exact: exactSqrt(l * l), kind: 'length' };
 }
 export function angleMeasure(deg: number): Measure {
-  return { value: deg, exact: Math.abs(deg - Math.round(deg)) < 1e-7 ? { a: Math.round(deg), b: 1, c: 1 } : null, kind: 'angle' };
+  return { value: deg, exact: Math.abs(deg - Math.round(deg)) < 1e-6 ? { a: Math.round(deg), b: 1, c: 1 } : null, kind: 'angle' };
 }
 export function polygonArea(pts: Pt[]): number {
   let a = 0;
@@ -156,7 +156,8 @@ export function decorate(objects: GeoObject[], shapes: Map<string, Shape>, defau
       out.lines.push({ owner: o.id, pts: [add(sub(c, mul(u, 0.16)), mul(outward, 0.12)), c, add(sub(c, mul(u, 0.16)), mul(outward, -0.12))] });
     }
     if (mode === 'hidden') return;
-    const label = mode === 'custom' ? { text: mathText(custom ?? ''), approx: false } : valueText(locked !== undefined ? typedLength(locked) : lengthMeasure(a, b), p);
+    const real = lengthMeasure(a, b);
+    const label = mode === 'custom' ? { text: mathText(custom ?? ''), approx: false } : valueText(locked !== undefined && Math.abs(locked - real.value) < 1e-6 ? typedLength(locked) : real, p);
     if (!label.text) return;
     if (p.sideStyle === 'dimension') {
       const off = mul(outward, p.dimOffset);
@@ -175,7 +176,9 @@ export function decorate(objects: GeoObject[], shapes: Map<string, Shape>, defau
 
   /** an angle at v from the ray to a round to the ray to c (the smaller turn), with its label */
   const corner = (o: GeoObject, key: string, a: Pt, v: Pt, c: Pt, mode: LabelMode, custom: string | undefined, arcs: number, p: GeoProps, reflex = false, locked?: number) => {
-    const deg = locked ?? (reflex ? 360 - angleAt(a, v, c) : angleAt(a, v, c));
+    const real = reflex ? 360 - angleAt(a, v, c) : angleAt(a, v, c);
+    // a typed angle is shown exactly while the drawing still has it
+    const deg = locked !== undefined && Math.abs(locked - real) < 1e-4 ? locked : real;
     const right = Math.abs(deg - 90) < 1e-6;
     const showMark = mode !== 'hidden' || p.rightMark === 'always';
     const [u1, u2] = [unit(sub(a, v)), unit(sub(c, v))];

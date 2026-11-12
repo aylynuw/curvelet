@@ -108,7 +108,9 @@ export function LookPicker({
     };
     document.addEventListener('pointerdown', close);
     document.addEventListener('keydown', close);
-    ref.current?.querySelector<HTMLElement>('input, button')?.focus();
+    ref.current?.querySelector<HTMLElement>('input, button')?.focus({ preventScroll: true });
+    // all of it in view, above the keypad, when it opens near the bottom of the list
+    requestAnimationFrame(() => ref.current?.scrollIntoView({ block: 'nearest' }));
     return () => {
       document.removeEventListener('pointerdown', close);
       document.removeEventListener('keydown', close);

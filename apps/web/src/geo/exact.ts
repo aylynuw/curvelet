@@ -88,22 +88,23 @@ export interface Measure {
 
 /** the text for a measure, and whether it is only approximate (no exact form for the asked format) */
 export function formatMeasure(m: Measure, p: Pick<GeoProps, 'format' | 'decimals' | 'unit'>): { text: string; approx: boolean } {
-  const decimal = () => {
+  /** `trim`: in exact view a value with no exact form drops trailing zeros (4.4, not 4.40) */
+  const decimal = (trim = false) => {
     const d = Math.max(0, Math.min(4, Math.round(p.decimals)));
-    const t = m.value.toFixed(d);
-    return Object.is(Number(t), -0) ? (0).toFixed(d) : t.replace('-', '−');
+    const t = trim ? String(Number(m.value.toFixed(d))) : m.value.toFixed(d);
+    return Object.is(Number(t), -0) ? (0).toFixed(trim ? 0 : d) : t.replace('-', '−');
   };
   let text: string;
   let approx = false;
   if (m.kind === 'angle') {
-    text = `${m.exact && m.exact.c === 1 && m.exact.b === 1 && p.format !== 'decimal' ? m.exact.a : decimal()}°`;
+    text = `${m.exact && m.exact.c === 1 && m.exact.b === 1 && p.format !== 'decimal' ? m.exact.a : decimal(p.format !== 'decimal')}°`;
     return { text, approx: !m.exact && p.format !== 'decimal' };
   }
   const exactWanted = p.format === 'auto' || p.format === 'radical' || p.format === 'pi' || (p.format === 'fraction' && (!m.exact || m.exact.b === 1));
   if (p.format === 'decimal') text = decimal();
   else if (m.exact && exactWanted && !(p.format === 'fraction' && m.exact.b !== 1)) text = exactText(m.exact, m.pi);
   else {
-    text = decimal();
+    text = decimal(true);
     approx = true;
   }
   const unit = p.unit.trim();

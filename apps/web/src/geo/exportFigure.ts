@@ -9,6 +9,15 @@ import { renderFigure, COLOR_PAINT, EXAM_PAINT } from './figure';
 import type { Decorations } from './labels';
 import { withAncestors, type GeoObject, type Pt, type Shape } from './model';
 
+/** an object's colour as a value a standalone SVG can use (palette slots read from the page's theme) */
+export function resolvedColor(c: string | undefined): string | undefined {
+  if (!c) return undefined;
+  const m = /^c([1-9])$/.exec(c);
+  if (!m) return /^#[0-9a-f]{6}$/i.test(c) ? c : undefined;
+  if (typeof document === 'undefined') return undefined;
+  return getComputedStyle(document.documentElement).getPropertyValue(`--color-curve-${m[1]}`).trim() || undefined;
+}
+
 /** 1 cm at 96 px per inch */
 export const PX_PER_UNIT = 96 / 2.54;
 
@@ -63,7 +72,7 @@ export function figureSvg(
   const width = Math.max(1, Math.ceil((x1 - x0) * s));
   const height = Math.max(1, Math.ceil((y1 - y0) * s));
   const paint = opts.exam ? EXAM_PAINT : COLOR_PAINT;
-  const body = renderFigure({ objects: list, shapes, deco: part, toScreen: (p) => ({ x: (p.x - x0) * s, y: (y1 - p.y) * s }), scale: s, far: (x1 - x0 + y1 - y0) * 2, paint });
+  const body = renderFigure({ objects: list, shapes, deco: part, toScreen: (p) => ({ x: (p.x - x0) * s, y: (y1 - p.y) * s }), scale: s, far: (x1 - x0 + y1 - y0) * 2, paint, colorOf: opts.exam ? undefined : (o) => resolvedColor(o.color) });
   const markup = renderToStaticMarkup(
     createElement(
       'svg',

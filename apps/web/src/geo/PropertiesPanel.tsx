@@ -5,6 +5,7 @@ import { angleAt, angleMeasure, lengthMeasure, typedLength } from './labels';
 import { cornerIds, type Deco, type GeoObject, type LabelPart, type Pt, type Shape } from './model';
 import { propsOf, type GeoProps } from './props';
 import type { GeoStrings } from './strings';
+import { CURVES, slotVar } from '../graph/looks';
 
 /** which length a row edits */
 export type LengthTarget = { owner: string; side: number } | { owner: string; radius: true };
@@ -33,6 +34,7 @@ export function PropertiesPanel({
   canEditAngle,
   onUnlock,
   onImage,
+  onColor,
 }: {
   s: GeoStrings;
   selected: GeoObject[];
@@ -54,6 +56,8 @@ export function PropertiesPanel({
   onUnlock: (owner: string, which: 'sides' | 'corners', k: number) => void;
   /** a picture's size or opacity changed */
   onImage: (id: string, patch: { w?: number; h?: number; opacity?: number }) => void;
+  /** the selected objects' colour: a palette slot ("c1" …), a hex colour, or undefined for the default */
+  onColor: (ids: string[], color: string | undefined) => void;
 }) {
   const byId = new Map(objects.map((o) => [o.id, o]));
   const name = (id: string) => byId.get(id)?.name ?? '?';
@@ -255,11 +259,60 @@ export function PropertiesPanel({
     body = <Notation s={s} value={p} own={one ? one.props : sharedOwn(selected)} onChange={onProps} />;
   }
 
+  const coloured = selected.filter((o) => o.kind !== 'image' && !(o.kind === 'point' && o.anchor));
   return (
     <div className="gp">
       <p className="gp__head">{!selected.length ? s.docTitle : one ? `${one.name} · ${s.kinds[one.kind]}` : s.selectedCount(selected.length)}</p>
+      {coloured.length > 0 && (
+        <ColourSection
+          s={s}
+          value={coloured.every((o) => o.color === coloured[0]!.color) ? coloured[0]!.color : null}
+          onChange={(c) => onColor(coloured.map((o) => o.id), c)}
+        />
+      )}
       {body}
     </div>
+  );
+}
+
+/** a colour for the selection: the default, eight palette colours that follow the theme, or any colour */
+function ColourSection({ s, value, onChange }: { s: GeoStrings; value: string | undefined | null; onChange: (c: string | undefined) => void }) {
+  const hex = value && /^#[0-9a-f]{6}$/i.test(value) ? value : '';
+  const [text, setText] = useState(hex);
+  useEffect(() => setText(hex), [hex]);
+  return (
+    <Section title={s.colour}>
+      <div className="look__group gp__colours" role="group" aria-label={s.colour}>
+        <button type="button" className="look__chip gp__chip-default" aria-label={s.colourDefault} title={s.colourDefault} aria-pressed={value === undefined} onClick={() => onChange(undefined)} />
+        {Array.from({ length: CURVES }, (_, k) => (
+          <button
+            key={k}
+            type="button"
+            className="look__chip"
+            style={{ '--chip': slotVar(k) } as React.CSSProperties}
+            aria-label={s.colourSlot(k + 1)}
+            title={s.colourSlot(k + 1)}
+            aria-pressed={value === `c${k + 1}`}
+            onClick={() => onChange(`c${k + 1}`)}
+          />
+        ))}
+      </div>
+      <div className="look__row">
+        <input type="color" className="look__picker" aria-label={s.colourPick} value={hex || '#2d70b3'} onChange={(e) => onChange(e.target.value.toLowerCase())} />
+        <input
+          className="input input--code look__hex"
+          aria-label={s.colourHex}
+          value={text}
+          placeholder="#2d70b3"
+          maxLength={7}
+          onChange={(e) => {
+            setText(e.target.value);
+            const v = e.target.value.startsWith('#') ? e.target.value : `#${e.target.value}`;
+            if (/^#[0-9a-f]{6}$/i.test(v)) onChange(v.toLowerCase());
+          }}
+        />
+      </div>
+    </Section>
   );
 }
 

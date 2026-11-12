@@ -856,26 +856,26 @@ textarea.input { resize: vertical; line-height: 1.5; }
   .btn:active, .segmented button:active, .tab:active, .key:active, .example:active, .geo__tool:active, .row-btn:active { transform: scale(0.97); }
 
   /* a new tool, tab, lesson or study view rises into place */
-  .workspace, .workspace--tool, .workspace--sheet { animation: ui-fade var(--dur-short) var(--ease-out) both; }
-  .tabpanel > *, .study__practice, .study > .ws, .lesson__body { animation: ui-rise 260ms var(--ease-out) both; }
+  .workspace, .workspace--tool, .workspace--sheet { animation: ui-fade var(--dur-short) var(--ease-out) backwards; }
+  .tabpanel > *, .study__practice, .study > .ws, .lesson__body { animation: ui-rise 260ms var(--ease-out) backwards; }
   .tab[aria-selected="true"]::after { transform-origin: center; animation: ui-underline 240ms var(--ease-out) both; }
 
   /* menus and panels open from their button; dialogs from the middle */
-  .menu__list, .gsettings__panel { transform-origin: top right; animation: ui-pop 160ms var(--ease-out) both; }
-  .look { transform-origin: top left; animation: ui-pop 160ms var(--ease-out) both; }
-  .dialog[open] { animation: ui-dialog 220ms var(--ease-out) both; }
-  .dialog[open]::backdrop { animation: ui-fade 220ms var(--ease-out) both; }
-  .notice { animation: ui-drop 240ms var(--ease-out) both; }
-  .keypad-dock { animation: ui-rise 240ms var(--ease-out) both; }
+  .menu__list, .gsettings__panel { transform-origin: top right; animation: ui-pop 160ms var(--ease-out) backwards; }
+  .look { transform-origin: top left; animation: ui-pop 160ms var(--ease-out) backwards; }
+  .dialog[open] { animation: ui-dialog 220ms var(--ease-out) backwards; }
+  .dialog[open]::backdrop { animation: ui-fade 220ms var(--ease-out) backwards; }
+  .notice { animation: ui-drop 240ms var(--ease-out) backwards; }
+  .keypad-dock { animation: ui-rise 240ms var(--ease-out) backwards; }
 
   /* practice: each new problem rises in, a right answer lifts once */
-  .practice__question, .practice__prompt, .practice__solution, .practice__answer { animation: ui-rise 300ms var(--ease-out) both; }
+  .practice__question, .practice__prompt, .practice__solution, .practice__answer { animation: ui-rise 300ms var(--ease-out) backwards; }
   .practice__verdict-text { display: inline-block; }
   .practice__verdict[data-correct="true"] .practice__verdict-text { animation: ui-cheer 420ms var(--ease-out) both; }
   .practice__verdict[data-correct="false"] .practice__verdict-text { animation: ui-nudge 320ms var(--ease-in-out) both; }
 
   /* a new line in the list, and a fresh answer */
-  .line { animation: ui-rise 200ms var(--ease-out) both; }
+  .line { animation: ui-rise 200ms var(--ease-out) backwards; }
   .lesson[data-done] .lesson__num { animation: ui-cheer 420ms var(--ease-out) both; }
 }
 @keyframes ui-fade { from { opacity: 0; } to { opacity: 1; } }
@@ -927,3 +927,5 @@ textarea.input { resize: vertical; line-height: 1.5; }
   .projects__current { grid-template-columns: minmax(0, 1fr); }
   .projects__new { margin-left: 0; }
 }
+.gp__colours { flex-wrap: wrap; }
+.gp__chip-default { --chip: var(--color-paper); background: linear-gradient(135deg, transparent calc(50% - 1px), var(--color-muted) calc(50% - 1px), var(--color-muted) calc(50% + 1px), transparent calc(50% + 1px)), var(--color-paper); box-shadow: inset 0 0 0 1px var(--color-rule); }

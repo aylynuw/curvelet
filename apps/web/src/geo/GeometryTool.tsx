@@ -8,6 +8,7 @@ import { cloneObjects, cornerIds, crossings, type PathNode, draggable, freeRoots
 import { PropertiesPanel, type AngleTarget, type LengthTarget } from './PropertiesPanel';
 import { BASE_PROPS, type GeoProps } from './props';
 import { GEO_KEY, notifyEdit } from '../files/keys';
+import { slotOf, slotVar } from '../graph/looks';
 import { pickPicture, pictureFile, readPicture, type Picture } from '../pictures';
 
 type QuickAction = 'lengths' | 'angles' | 'hide' | 'reset';
@@ -190,6 +191,13 @@ export function draftOf(tool: GeoTool, p0: Pt, p1: Pt, regular: boolean, center:
   if (tool === 'ellipse') return { draft: { kind: 'ellipse', c: { x: (box.x0 + box.x1) / 2, y: (box.y0 + box.y1) / 2 }, rx: w / 2, ry: h / 2 }, readout: size };
   return null;
 }
+
+/** an object's colour as CSS: a palette slot follows the theme */
+const cssColor = (c: string | undefined) => {
+  if (!c) return undefined;
+  const k = slotOf(c);
+  return k !== null ? slotVar(k) : /^#[0-9a-f]{6}$/i.test(c) ? c : undefined;
+};
 
 /** pen anchors no path uses any more go with it */
 function pruneAnchors(list: GeoObject[]): GeoObject[] {
@@ -1050,6 +1058,8 @@ export function GeometryTool({ s, onSendToGraph }: { s: GeoStrings; onSendToGrap
       return;
     }
     if (o.kind === 'label') {
+      // a press that hardly moves is a click on the shape, not a drag of its label
+      if (!o.moved && dist(sp, toScreen(o.start)) < 4) return;
       const w = toWorld(sp);
       const moved = { x: o.orig.x + w.x - o.start.x, y: o.orig.y + w.y - o.start.y };
       o.moved = true;
@@ -1072,7 +1082,10 @@ export function GeometryTool({ s, onSendToGraph }: { s: GeoStrings; onSendToGrap
     }
     if (o.kind === 'resize') {
       o.moved = true;
-      const w = toWorld(sp);
+      // the handle lands on the grid, so the corners stay on simple numbers (and their lengths exact)
+      const w0 = toWorld(sp);
+      const g = gridStep / 2;
+      const w = doc.snap ? { x: Math.round(w0.x / g) * g, y: Math.round(w0.y / g) * g } : w0;
       const { box, handle } = o;
       const usesX = handle !== 'n' && handle !== 's';
       const usesY = handle !== 'e' && handle !== 'w';
@@ -1135,6 +1148,7 @@ export function GeometryTool({ s, onSendToGraph }: { s: GeoStrings; onSendToGrap
     if (o.kind === 'pen') return;
     if (o.kind === 'move' || o.kind === 'resize' || o.kind === 'turn' || o.kind === 'label' || o.kind === 'handle') {
       if (!o.moved) setPast((p) => p.slice(0, -1));
+      if (!o.moved && o.kind === 'label') setSel(e.shiftKey ? (cur) => (cur.includes(o.owner) ? cur : [...cur, o.owner]) : [o.owner]);
       else setFuture([]);
       // points dragged by hand, or a shape stretched: its typed values no longer hold, so they let go
       // (moving or turning a whole shape keeps every length and angle, so those stay)
@@ -1566,7 +1580,7 @@ export function GeometryTool({ s, onSendToGraph }: { s: GeoStrings; onSendToGrap
     return out;
   };
   const highlight = new Set([...selSet, ...picks]);
-  const figure = renderFigure({ objects, shapes, deco, toScreen, scale: view.s, far, highlight, interactive: true, showAnchors });
+  const figure = renderFigure({ objects, shapes, deco, toScreen, scale: view.s, far, highlight, interactive: true, showAnchors, colorOf: doc.exam ? undefined : (o) => cssColor(o.color) });
 
   // pen paths in hand: their handles, and the next piece following the cursor
   let penMarks: ReactElement | null = null;
@@ -1995,6 +2009,7 @@ export function GeometryTool({ s, onSendToGraph }: { s: GeoStrings; onSendToGrap
               onAngle={onAngle}
               canEditAngle={canEditAngle}
               onUnlock={onUnlock}
+              onColor={(ids, color) => patchObjects(new Set(ids), (o) => ({ ...o, color }))}
               onImage={(id, patch) => patchObjects(new Set([id]), (o) => (o.kind === 'image' ? { ...o, ...patch } : o))}
             />
           ) : objects.length === 0 ? (

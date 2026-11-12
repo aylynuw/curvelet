@@ -32,6 +32,7 @@ export function renderFigure({
   paint,
   interactive,
   showAnchors,
+  colorOf,
 }: {
   objects: GeoObject[];
   shapes: Map<string, Shape>;
@@ -47,6 +48,8 @@ export function renderFigure({
   interactive?: boolean;
   /** pen anchors to show (those of the path being drawn or edited); the rest stay hidden */
   showAnchors?: Set<string>;
+  /** an object's own colour as CSS, when it has one and the view shows colour */
+  colorOf?: (o: GeoObject) => string | undefined;
 }): ReactElement[] {
   const hl = (id: string) => (highlight?.has(id) ? ' is-picked' : '');
   const stroke = paint ? { stroke: paint.line, strokeWidth: paint.width, fill: 'none' } : {};
@@ -65,20 +68,24 @@ export function renderFigure({
   for (const o of objects) {
     const sh = shapes.get(o.id);
     if (!sh) continue;
+    const col = colorOf?.(o);
+    // its own colour wins over the class (on screen) and the paint (in an export)
+    const own = col ? { stroke: col } : {};
+    const ownFill = col ? { fill: paint ? col : `color-mix(in oklch, ${col} 16%, transparent)`, ...(paint ? { fillOpacity: 0.14 } : {}) } : {};
     if (sh.type === 'polygon') {
       const pts = sh.pts.map(toScreen).map((p) => `${r(p.x)},${r(p.y)}`).join(' ');
-      fills.push(<polygon key={o.id} data-id={o.id} className={`geo__poly${hl(o.id)}`} points={pts} {...(paint ? { fill: paint.fill, stroke: paint.line, strokeWidth: paint.width, strokeLinejoin: 'round' } : {})} />);
+      fills.push(<polygon key={o.id} data-id={o.id} className={`geo__poly${hl(o.id)}`} points={pts} {...(paint ? { fill: paint.fill, stroke: paint.line, strokeWidth: paint.width, strokeLinejoin: 'round' } : {})} {...(paint ? { ...own, ...ownFill } : {})} style={paint || !col ? undefined : { ...own, ...ownFill }} />);
     } else if (sh.type === 'line') {
       const [a, b] = ends(sh.a, sh.b, sh.extent).map(toScreen) as [Pt, Pt];
       const built = !['segment', 'line', 'ray'].includes(o.kind);
-      strokes.push(<line key={o.id} data-id={o.id} className={`geo__line${built ? ' geo__line--built' : ''}${hl(o.id)}`} x1={r(a.x)} y1={r(a.y)} x2={r(b.x)} y2={r(b.y)} {...stroke} strokeLinecap="round" />);
+      strokes.push(<line key={o.id} data-id={o.id} className={`geo__line${built ? ' geo__line--built' : ''}${hl(o.id)}`} x1={r(a.x)} y1={r(a.y)} x2={r(b.x)} y2={r(b.y)} {...stroke} {...(paint ? own : {})} style={paint || !col ? undefined : own} strokeLinecap="round" />);
     } else if (sh.type === 'circle') {
       const c = toScreen(sh.c);
-      strokes.push(<circle key={o.id} data-id={o.id} className={`geo__circle${hl(o.id)}`} cx={r(c.x)} cy={r(c.y)} r={r(sh.r * scale)} {...stroke} />);
+      strokes.push(<circle key={o.id} data-id={o.id} className={`geo__circle${hl(o.id)}`} cx={r(c.x)} cy={r(c.y)} r={r(sh.r * scale)} {...stroke} {...(paint ? own : {})} style={paint || !col ? undefined : own} />);
     } else if (sh.type === 'ellipse') {
       const c = toScreen(sh.c);
       strokes.push(
-        <ellipse key={o.id} data-id={o.id} className={`geo__circle${hl(o.id)}`} cx={r(c.x)} cy={r(c.y)} rx={r(sh.rx * scale)} ry={r(sh.ry * scale)} transform={sh.rot ? `rotate(${r(-sh.rot)} ${r(c.x)} ${r(c.y)})` : undefined} {...stroke} />,
+        <ellipse key={o.id} data-id={o.id} className={`geo__circle${hl(o.id)}`} cx={r(c.x)} cy={r(c.y)} rx={r(sh.rx * scale)} ry={r(sh.ry * scale)} transform={sh.rot ? `rotate(${r(-sh.rot)} ${r(c.x)} ${r(c.y)})` : undefined} {...stroke} {...(paint ? own : {})} style={paint || !col ? undefined : own} />,
       );
     } else if (sh.type === 'path') {
       const d = sh.pts.map(toScreen).map((p, k) => `${k ? 'L' : 'M'}${r(p.x)},${r(p.y)}`).join(' ') + (sh.closed ? ' Z' : '');
@@ -89,6 +96,8 @@ export function renderFigure({
           className={`geo__pen${sh.closed ? ' geo__pen--closed' : ''}${hl(o.id)}`}
           d={d}
           {...(paint ? { fill: sh.closed ? paint.fill : 'none', stroke: paint.line, strokeWidth: paint.width, strokeLinejoin: 'round' as const, strokeLinecap: 'round' as const } : {})}
+          {...(paint ? { ...own, ...(sh.closed ? ownFill : {}) } : {})}
+          style={paint || !col ? undefined : { ...own, ...(sh.closed ? ownFill : {}) }}
         />,
       );
     } else if (sh.type === 'point') {
@@ -103,7 +112,8 @@ export function renderFigure({
           cx={r(p.x)}
           cy={r(p.y)}
           r={rad}
-          {...(paint ? { fill: paint.ink, stroke: 'none' } : {})}
+          {...(paint ? { fill: col ?? paint.ink, stroke: 'none' } : {})}
+          style={paint || !col ? undefined : { fill: col }}
         />,
       );
     } else if (sh.type === 'image') {

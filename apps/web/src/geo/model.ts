@@ -34,6 +34,8 @@ export interface Deco {
 export interface Styled {
   props?: Partial<GeoProps>;
   deco?: Deco;
+  /** its colour: a palette slot ("c1" … "c8", following the theme) or a hex colour */
+  color?: string;
 }
 
 export type GeoObject = (
