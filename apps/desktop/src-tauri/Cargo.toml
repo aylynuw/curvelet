@@ -1,6 +1,6 @@
 [package]
 name = "curvelet"
-version = "0.1.0"
+version = "0.2.0"
 description = "Graphing, symbolic math, geometry and worksheets, offline"
 edition = "2021"
 
@@ -16,6 +16,11 @@ tauri = { version = "2", features = [] }
 # the native Save dialog for exports and project files
 tauri-plugin-dialog = "2"
 base64 = "0.22"
+# updates: signed releases listed in the public curvelet-releases repository
+tauri-plugin-updater = "2"
+serde = { version = "1", features = ["derive"] }
+# generate_context! writes the plugins' settings with it
+serde_json = "1"
 
 [profile.release]
 # a smaller app: the work happens in the web view and the WebAssembly engine

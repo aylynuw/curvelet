@@ -1,5 +1,6 @@
 use base64::Engine;
 use tauri_plugin_dialog::DialogExt;
+use tauri_plugin_updater::UpdaterExt;
 
 /// Saves a file the page made (an exported figure, a project): asks where with
 /// the system's Save dialog, then writes it there. The web view can't download
@@ -21,14 +22,39 @@ async fn save_file(app: tauri::AppHandle, name: String, data: String) -> Result<
     Ok(Some(path.display().to_string()))
 }
 
+/// A newer release, as the page shows it.
+#[derive(serde::Serialize)]
+struct UpdateInfo {
+    version: String,
+    notes: Option<String>,
+}
+
+/// Whether a newer signed release is out. None when this is the latest.
+#[tauri::command]
+async fn check_update(app: tauri::AppHandle) -> Result<Option<UpdateInfo>, String> {
+    let update = app.updater().map_err(|e| e.to_string())?.check().await.map_err(|e| e.to_string())?;
+    Ok(update.map(|u| UpdateInfo { version: u.version.clone(), notes: u.body.clone() }))
+}
+
+/// Downloads the newer release, checks its signature, installs it and restarts.
+#[tauri::command]
+async fn install_update(app: tauri::AppHandle) -> Result<(), String> {
+    let Some(update) = app.updater().map_err(|e| e.to_string())?.check().await.map_err(|e| e.to_string())? else {
+        return Ok(());
+    };
+    update.download_and_install(|_, _| {}, || {}).await.map_err(|e| e.to_string())?;
+    app.restart();
+}
+
 /// The desktop app is the web app in a native window: every file ships inside
-/// the app and nothing is fetched. The one native command saves files the user
-/// exports, through the system's Save dialog.
+/// the app. Native commands save files the user exports (the system's Save
+/// dialog), and check for and install signed updates.
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
-        .invoke_handler(tauri::generate_handler![save_file])
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .invoke_handler(tauri::generate_handler![save_file, check_update, install_update])
         .run(tauri::generate_context!())
         .expect("the Curvelet window could not start");
 }

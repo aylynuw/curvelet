@@ -1,3 +1,4 @@
+import { checkDesktopUpdate, installDesktopUpdate } from './files/desktopUpdate';
 import { CasResolver } from '@math/cas';
 import { DEFAULT_SETTINGS, Workspace, type EvalSettings } from '@math/engine';
 import { Suspense, lazy, useCallback, useEffect, useMemo, useReducer, useRef, useState, type KeyboardEvent } from 'react';
@@ -196,7 +197,22 @@ export function App() {
       // kept for this visit only
     }
   }, [figure.grid, figure.piTicks, figure.pointLabels, figure.axes, figure.guides]);
-  const [notice, setNotice] = useState<{ text: string; link?: string; action?: { label: string; run: () => void } } | null>(null);
+  const [notice, setNotice] = useState<{ text: string; link?: string; action?: { label: string; run: () => void }; stay?: boolean } | null>(null);
+  // the desktop app: a newer signed release offers itself a little after start, and waits until it's chosen or closed
+  useEffect(() => {
+    const id = setTimeout(async () => {
+      const update = await checkDesktopUpdate();
+      if (!update) return;
+      const install = async () => {
+        setNotice({ text: t.desktopUpdating(update.version), stay: true });
+        if (!(await installDesktopUpdate())) setNotice({ text: t.desktopUpdateFailed });
+      };
+      setNotice({ text: t.desktopUpdate(update.version), action: { label: t.desktopUpdateNow, run: () => void install() }, stay: true });
+    }, 4000);
+    return () => clearTimeout(id);
+    // once per start; the strings at that moment are fine
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   // a new version downloaded in the background: offer to switch
   useEffect(
     () => onUpdateReady(() => setNotice({ text: t.updateReady, action: { label: t.updateNow, run: applyUpdate } })),
@@ -207,7 +223,7 @@ export function App() {
   // notices close by themselves, unless the pointer or focus is on them or they hold a link to copy
   const [noticeHeld, setNoticeHeld] = useState(false);
   useEffect(() => {
-    if (!notice || notice.link || noticeHeld) return;
+    if (!notice || notice.link || notice.stay || noticeHeld) return;
     const id = setTimeout(() => setNotice(null), notice.action ? 12000 : 6000);
     return () => clearTimeout(id);
   }, [notice, noticeHeld]);

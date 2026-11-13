@@ -1,8 +1,11 @@
 # Builds Curvelet's desktop installers on GitHub's machines.
 #   - Run it by hand: Actions → Desktop apps → Run workflow. The installers are attached
 #     to the run under "Artifacts".
-#   - Push a version tag (git tag v0.1.0 && git push origin v0.1.0): the same builds, plus a
-#     draft GitHub release with every installer attached, ready to publish.
+#   - Push a version tag (git tag v0.2.0 && git push origin v0.2.0): the same builds, published
+#     as a release in the public aylynuw/curvelet-releases repository (this one is private),
+#     with latest.json, which installed apps read to offer the update.
+#     Needs two secrets here: TAURI_SIGNING_PRIVATE_KEY (signs the updates; the public half is
+#     in tauri.conf.json) and RELEASES_TOKEN (a token that can write to curvelet-releases).
 name: Desktop apps
 
 on:
@@ -15,7 +18,8 @@ permissions:
 
 concurrency:
   group: desktop-${{ github.ref }}
-  cancel-in-progress: true
+  # a newer push replaces a test build, but a release always runs to the end
+  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') }}
 
 jobs:
   test:
@@ -83,17 +87,25 @@ jobs:
       - name: Build the installer
         uses: tauri-apps/tauri-action@v0
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # releases go to the public repository, which needs its own token
+          GITHUB_TOKEN: ${{ startsWith(github.ref, 'refs/tags/v') && secrets.RELEASES_TOKEN || secrets.GITHUB_TOKEN }}
+          # signs the update files, so installed apps only take updates made here
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
           # set this repository variable to your web address so share links from the app work
           VITE_PUBLIC_URL: ${{ vars.PUBLIC_URL }}
         with:
           projectPath: apps/desktop
           args: ${{ matrix.args }}
-          # on a version tag: a draft release named after it; otherwise just the build
+          # on a version tag: a published release in curvelet-releases; otherwise just the build
+          owner: aylynuw
+          repo: curvelet-releases
+          releaseCommitish: main
           tagName: ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || '' }}
           releaseName: ${{ startsWith(github.ref, 'refs/tags/v') && format('Curvelet {0}', github.ref_name) || '' }}
-          releaseBody: Installers for Windows, macOS and Linux. The macOS and Windows builds are not signed yet; see docs/apps.md.
-          releaseDraft: true
+          releaseBody: Installers for Windows, macOS and Linux. Installed apps update themselves. The macOS and Windows builds are not code-signed yet, so the first install shows a warning.
+          releaseDraft: false
+          includeUpdaterJson: true
 
       - name: Keep the installers with this run
         uses: actions/upload-artifact@v4
