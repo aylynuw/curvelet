@@ -1,6 +1,6 @@
 import { dashPattern } from './look';
 import { isTransparent, parseHex, type Rgb } from './color';
-import type { Label, Scene } from './scene';
+import { stackedFraction, type Label, type Scene } from './scene';
 import { isMathLabel, mathRuns, type DrawTheme } from './theme';
 
 const FUNCTIONS = new Set(['sin', 'cos', 'tan', 'sec', 'csc', 'cot', 'sinh', 'cosh', 'tanh', 'ln', 'log', 'exp', 'det', 'gcd', 'max', 'min', 'arcsin', 'arccos', 'arctan']);
@@ -100,6 +100,12 @@ export function sceneToTikz(scene: Scene, theme: DrawTheme, rgb: (css: string) =
 
   function label(l: Label): string {
     const anchor = ANCHOR[`${l.anchor} ${l.baseline}`];
+    const frac = exam ? stackedFraction(l) : null;
+    if (frac) {
+      // stacked as \frac, with √ and π as LaTeX writes them
+      const tex = (t: string) => t.replace(/√(\d+|\p{L})/gu, '\\sqrt{$1}').replace(/π/g, '\\pi ');
+      return `\\node[anchor=${anchor}, inner sep=0pt] at (${n(l.x)},${n(l.y)}) {$${frac[0] ? '-' : ''}\\frac{${tex(frac[1])}}{${tex(frac[2])}}$};`;
+    }
     const math = exam && isMathLabel(l);
     const numeric = l.kind === 'guide' || l.kind === 'tick';
     const content = math ? `$${latex(l.text)}$` : numeric ? `$${l.text.replace(/−/g, '-')}$` : l.text.replace(/[{}%#&_\\]/g, (c) => `\\${c}`);

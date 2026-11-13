@@ -1,7 +1,28 @@
 import { dashPattern } from './look';
 import { isTransparent, parseHex, type Rgb } from './color';
-import type { Label, Scene } from './scene';
+import { stackedFraction, type Label, type Scene } from './scene';
 import { isMathLabel, mathRuns, type DrawTheme, type Run } from './theme';
+
+/**
+ * A picture placed in the PDF under the figure: centre, size and turn in screen
+ * pixels, and its pixels already compressed (zlib, as FlateDecode reads them).
+ */
+export interface PdfImage {
+  cx: number;
+  cy: number;
+  w: number;
+  h: number;
+  /** counter-clockwise, in radians */
+  angle?: number;
+  opacity: number;
+  /** pixel width and height */
+  pw: number;
+  ph: number;
+  /** RGB bytes, row by row from the top, deflated */
+  rgb: Uint8Array;
+  /** one alpha byte per pixel, deflated; absent when the picture is opaque */
+  alpha?: Uint8Array;
+}
 
 /**
  * A scene as a one-page vector PDF, page size = figure size (1 px = 0.75 pt).
@@ -9,7 +30,7 @@ import { isMathLabel, mathRuns, type DrawTheme, type Run } from './theme';
  * which every PDF reader has, so nothing is embedded. Those fonts cover Latin
  * text only: other scripts print as "?".
  */
-export function sceneToPdf(scene: Scene, theme: DrawTheme, rgb: (css: string) => Rgb = parseHex): Uint8Array {
+export function sceneToPdf(scene: Scene, theme: DrawTheme, rgb: (css: string) => Rgb = parseHex, images: PdfImage[] = []): Uint8Array {
   const exam = scene.style === 'exam';
   const W = scene.width;
   const H = scene.height;
@@ -21,6 +42,16 @@ export function sceneToPdf(scene: Scene, theme: DrawTheme, rgb: (css: string) =>
   // 1 px = 0.75 pt, y downwards like the screen
   ops.push(`0.75 0 0 -0.75 0 ${n(H * 0.75)} cm`);
   if (theme.background && !isTransparent(theme.background)) ops.push(`${col(theme.background)} rg 0 0 ${W} ${H} re f`);
+
+  // pictures first, under everything but the background, as on screen
+  images.forEach((im, k) => {
+    const t = -(im.angle ?? 0);
+    const [c, s] = [Math.cos(t), Math.sin(t)];
+    // the page runs y down, so the picture's first row goes to the top: scale y by −h
+    ops.push(
+      `q /Pic${k} gs ${n(c)} ${n(s)} ${n(-s)} ${n(c)} ${n(im.cx)} ${n(im.cy)} cm ${n(im.w)} 0 0 ${n(-im.h)} ${n(-im.w / 2)} ${n(im.h / 2)} cm /Im${k} Do Q`,
+    );
+  });
 
   const segs = (s: number[]) => {
     let d = '';
@@ -79,7 +110,41 @@ export function sceneToPdf(scene: Scene, theme: DrawTheme, rgb: (css: string) =>
 
   for (const l of scene.labels) ops.push(text(l));
 
+  /** plain upright text (Greek, √, ∞ and ∫ from the Symbol font), from x at baseline y */
+  function plain(s: string, x: number, y: number, size: number, fill: string): string {
+    let out = '';
+    for (const piece of splitGreek([{ text: s, italic: false }])) {
+      const font = piece.greek ? '/F3' : '/F1';
+      const str = pdfString(piece.greek ? toSymbol(piece.text) : piece.text);
+      const place = `BT ${font} ${n(size)} Tf 1 0 0 -1 ${n(x)} ${n(y)} Tm`;
+      if (theme.halo) out += `${col(theme.halo)} RG 3 w 1 Tr ${place} ${str} Tj ET `;
+      out += `${col(fill)} rg 0 Tr ${place} ${str} Tj ET `;
+      x += textWidth(piece.text, size, exam);
+    }
+    return out;
+  }
+
   function text(l: Label): string {
+    const frac = exam ? stackedFraction(l) : null;
+    if (frac) {
+      // 11/5 stacked, as the screen and SVG set it
+      const [sign, num, den] = frac;
+      const size = theme.fontSize;
+      const fs = size * 0.85;
+      const bar = Math.max(textWidth(num, fs, exam), textWidth(den, fs, exam)) + 4;
+      const sw = sign ? textWidth(sign, size, exam) + 1 : 0;
+      const w = sw + bar;
+      const h = fs * 2 + 4;
+      const cy = l.baseline === 'top' ? l.y + h / 2 : l.baseline === 'bottom' ? l.y - h / 2 : l.y;
+      const x0 = l.anchor === 'start' ? l.x : l.anchor === 'middle' ? l.x - w / 2 : l.x - w;
+      const cx = x0 + sw + bar / 2;
+      let out = '';
+      if (sign) out += plain(sign, x0, cy + size * 0.32, size, theme.ink);
+      out += plain(num, cx - textWidth(num, fs, exam) / 2, cy - 3, fs, theme.ink);
+      out += plain(den, cx - textWidth(den, fs, exam) / 2, cy + 2 + fs * 0.78, fs, theme.ink);
+      out += `${col(theme.ink)} rg ${n(x0 + sw)} ${n(cy - 0.5)} ${n(bar)} 1 re f `;
+      return out;
+    }
     const small = l.kind === 'tick' && !exam;
     const size = small ? theme.fontSize - 3 : theme.fontSize;
     const runs: Run[] = exam && isMathLabel(l) ? mathRuns(l.text) : [{ text: l.text, italic: false }];
@@ -118,6 +183,25 @@ export function sceneToPdf(scene: Scene, theme: DrawTheme, rgb: (css: string) =>
     '<< /Type /ExtGState /ca 1 >>',
     '<< /Type /Font /Subtype /Type1 /BaseFont /Symbol >>',
   ];
+  // each picture: its pixels, its alpha (a soft mask) and an opacity state
+  const imageRefs: string[] = [];
+  const stateRefs: string[] = [];
+  images.forEach((im, k) => {
+    let mask = '';
+    if (im.alpha) {
+      objects.push(`<< /Type /XObject /Subtype /Image /Width ${im.pw} /Height ${im.ph} /ColorSpace /DeviceGray /BitsPerComponent 8 /Filter /FlateDecode /Length ${im.alpha.length} >>\nstream\n${latin1(im.alpha)}\nendstream`);
+      mask = ` /SMask ${objects.length} 0 R`;
+    }
+    objects.push(`<< /Type /XObject /Subtype /Image /Width ${im.pw} /Height ${im.ph} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /FlateDecode${mask} /Length ${im.rgb.length} >>\nstream\n${latin1(im.rgb)}\nendstream`);
+    imageRefs.push(`/Im${k} ${objects.length} 0 R`);
+    objects.push(`<< /Type /ExtGState /ca ${n(Math.max(0, Math.min(1, im.opacity)))} >>`);
+    stateRefs.push(`/Pic${k} ${objects.length} 0 R`);
+  });
+  if (images.length) {
+    objects[2] = objects[2]!
+      .replace('/ExtGState << /Fill 7 0 R /Opaque 8 0 R', `/ExtGState << /Fill 7 0 R /Opaque 8 0 R ${stateRefs.join(' ')}`)
+      .replace('/Resources << ', `/Resources << /XObject << ${imageRefs.join(' ')} >> `);
+  }
   let pdf = '%PDF-1.4\n%\xE2\xE3\xCF\xD3\n';
   const offsets: number[] = [];
   objects.forEach((body, k) => {
@@ -132,8 +216,17 @@ export function sceneToPdf(scene: Scene, theme: DrawTheme, rgb: (css: string) =>
   return Uint8Array.from(pdf, (c) => c.charCodeAt(0) & 0xff);
 }
 
+/** bytes as a string of one character each, so they pass through the writer unchanged */
+function latin1(bytes: Uint8Array): string {
+  let out = '';
+  for (let k = 0; k < bytes.length; k += 0x8000) out += String.fromCharCode(...bytes.subarray(k, k + 0x8000));
+  return out;
+}
+
 const SYMBOL: Record<string, string> = {
   α: 'a', β: 'b', γ: 'g', δ: 'd', ε: 'e', θ: 'q', λ: 'l', μ: 'm', π: 'p', σ: 's', τ: 't', φ: 'f', ω: 'w',
+  // the radical sign, infinity and the integral sign are in the Symbol font too
+  '√': '\u00D6', '∞': '\u00A5', '∫': '\u00F2',
 };
 const isGreek = (ch: string) => ch in SYMBOL;
 const toSymbol = (s: string) => [...s].map((c) => SYMBOL[c] ?? '?').join('');
@@ -142,7 +235,7 @@ const toSymbol = (s: string) => [...s].map((c) => SYMBOL[c] ?? '?').join('');
 function splitGreek(runs: Run[]): (Run & { greek: boolean })[] {
   const out: (Run & { greek: boolean })[] = [];
   for (const r of runs) {
-    for (const m of r.text.matchAll(/[α-ω]+|[^α-ω]+/g)) out.push({ ...r, text: m[0], greek: isGreek(m[0][0]!) });
+    for (const m of r.text.matchAll(/[α-ω√∞∫]+|[^α-ω√∞∫]+/g)) out.push({ ...r, text: m[0], greek: isGreek(m[0][0]!) });
   }
   return out;
 }
@@ -168,6 +261,9 @@ function textWidth(s: string, size: number, times: boolean): number {
     else if ('()-'.includes(ch)) units += 333;
     else if ('+=<>'.includes(ch)) units += 564;
     else if (ch === '−') units += times ? 500 : 556;
+    else if (ch === '√') units += 549;
+    else if (ch === '∞') units += 713;
+    else if (ch === '∫') units += 274;
     else if ('ijlt'.includes(ch)) units += 278;
     else if ('frs'.includes(ch)) units += times ? 350 : 400;
     else if ('mw'.includes(ch)) units += 760;

@@ -86,6 +86,7 @@ export function CalculatorTool({
   onSendToGraph,
   onNotice,
   onFormat,
+  graphDefs = [],
 }: {
   s: CalcStrings;
   t: Strings;
@@ -96,8 +97,32 @@ export function CalculatorTool({
   onNotice: (text: string) => void;
   /** the app's number setting: exact or decimal */
   onFormat: (f: Format) => void;
+  /** the graph's definitions (let f(x) = …, a = 2): the calculator can use them too */
+  graphDefs?: { name: string; source: string }[];
 }) {
   const [tape, setTape] = useState<TapeEntry[]>(loadTape);
+  /** earlier and undone tapes, for Ctrl+Z and Ctrl+Shift+Z */
+  const [past, setPast] = useState<TapeEntry[][]>([]);
+  const [future, setFuture] = useState<TapeEntry[][]>([]);
+  const changeTape = (next: TapeEntry[]) => {
+    setPast((p) => [...p.slice(-99), tape]);
+    setFuture([]);
+    setTape(next);
+  };
+  const stepTape = (dir: 'undo' | 'redo') => {
+    const from = dir === 'undo' ? past : future;
+    const to = from[from.length - 1];
+    if (!to) return;
+    if (dir === 'undo') {
+      setPast(from.slice(0, -1));
+      setFuture((f) => [...f, tape]);
+    } else {
+      setFuture(from.slice(0, -1));
+      setPast((p) => [...p, tape]);
+    }
+    setTape(to);
+    setPlace(null);
+  };
   const [input, setInput] = useState('');
   /** where Enter puts the line: replace an entry, add one under it, or (null) add at the end */
   const [place, setPlace] = useState<{ kind: 'edit' | 'after'; id: string } | null>(null);
@@ -126,9 +151,12 @@ export function CalculatorTool({
   // the other lines are worked out again, so changing a definition changes what uses it
   // (lines with ans keep the answer they had: ans meant the line before them)
   const rows = tape.filter((e) => !e.def && !/\bans\b/.test(e.source));
-  const keep = new Set([...[...defs.values()].map((e) => `def:${e.id}`), ...rows.map((e) => `row:${e.id}`)]);
+  // the graph's definitions fill in names the tape doesn't define itself
+  const fromGraph = graphDefs.filter((d) => d.name !== 'ans' && d.name !== 'cur' && d.name !== curName && !defs.has(d.name));
+  const keep = new Set([...[...defs.values()].map((e) => `def:${e.id}`), ...rows.map((e) => `row:${e.id}`), ...fromGraph.map((d) => `graph:${d.name}`)]);
   // old ones out first, so a name never has two definitions at once
   for (const id of defIds.current) if (!keep.has(id)) ws.remove(id);
+  for (const d of fromGraph) if (ws.source(`graph:${d.name}`) !== d.source) ws.set(`graph:${d.name}`, d.source);
   for (const e of defs.values()) if (ws.source(`def:${e.id}`) !== e.source) ws.set(`def:${e.id}`, e.source);
   for (const e of rows) if (ws.source(`row:${e.id}`) !== e.source) ws.set(`row:${e.id}`, e.source);
   defIds.current = keep;
@@ -144,15 +172,32 @@ export function CalculatorTool({
   const result = input.trim() ? ws.result('cur') : undefined;
   const live = answer(result, t);
 
+  // Ctrl/Cmd+Z steps the tape back while nothing is being typed (with text in the field it undoes the typing);
+  // Shift+Ctrl/Cmd+Z or Ctrl+Y steps forward
+  const stepRef = useRef(stepTape);
+  stepRef.current = stepTape;
+  const typing = useRef(false);
+  typing.current = input.trim() !== '';
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const key = e.key.toLowerCase();
+      if (!(e.metaKey || e.ctrlKey) || e.altKey || (key !== 'z' && key !== 'y') || typing.current) return;
+      const at = document.activeElement as HTMLElement | null;
+      if (at?.closest('input, textarea, [contenteditable="true"]')) return;
+      e.preventDefault();
+      e.stopPropagation();
+      stepRef.current(key === 'y' || e.shiftKey ? 'redo' : 'undo');
+    };
+    window.addEventListener('keydown', onKey, true);
+    return () => window.removeEventListener('keydown', onKey, true);
+  }, []);
+
   const commit = () => {
     if (!live || !input.trim()) return;
     const entry: TapeEntry = { id: place?.kind === 'edit' ? place.id : newId(), source: input, text: live.text, ...(live.exact ? { exact: live.exact } : {}), ...(live.math ? { math: true } : {}), ...(live.note ? { note: true } : {}), ...(live.constant ? { constant: true } : {}), ...(curName && (result?.status === 'function' || result?.status === 'value') ? { def: curName } : {}) };
-    setTape((tp) => {
-      const k = place ? tp.findIndex((e) => e.id === place.id) : -1;
-      if (k < 0) return [...tp, entry];
-      // edited in place, or added right under the line it was opened from
-      return place!.kind === 'edit' ? tp.map((e, i) => (i === k ? entry : e)) : [...tp.slice(0, k + 1), entry, ...tp.slice(k + 1)];
-    });
+    const k = place ? tape.findIndex((e) => e.id === place.id) : -1;
+    // edited in place, or added right under the line it was opened from
+    changeTape(k < 0 ? [...tape, entry] : place!.kind === 'edit' ? tape.map((e, i) => (i === k ? entry : e)) : [...tape.slice(0, k + 1), entry, ...tape.slice(k + 1)]);
     setPlace(null);
     setInput('');
   };
@@ -184,6 +229,17 @@ export function CalculatorTool({
   return (
     <div className="calc">
       <section className="calc__tape" aria-label={s.tape}>
+        {fromGraph.length > 0 && (
+          <p className="calc__from-graph">
+            {s.fromGraph}{' '}
+            {fromGraph.map((d, k) => (
+              <span key={d.name}>
+                {k > 0 && ', '}
+                <MathText text={d.name} />
+              </span>
+            ))}
+          </p>
+        )}
         {tape.length === 0 ? (
           <p className="calc__empty">{s.emptyTape}</p>
         ) : (
@@ -227,7 +283,7 @@ export function CalculatorTool({
                     title={s.deleteLine}
                     aria-label={`${s.deleteLine} (${k + 1})`}
                     onClick={() => {
-                      setTape((tp) => tp.filter((q) => q.id !== e.id));
+                      changeTape(tape.filter((q) => q.id !== e.id));
                       if (place?.id === e.id) {
                         setPlace(null);
                         setInput('');
@@ -307,8 +363,18 @@ export function CalculatorTool({
           <button type="button" className="btn btn--small" disabled={!target} onClick={() => target && onSendToGraph(target)}>
             {s.sendToGraph}
           </button>
+          <button type="button" className="icon-btn calc__step" aria-label={t.undo} title={t.undoHint} disabled={!past.length} onClick={() => stepTape('undo')}>
+            <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
+              <path d="M6 4L3 7l3 3M3 7h6.5a3.5 3.5 0 010 7H8" stroke="currentColor" strokeWidth="1.5" fill="none" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          </button>
+          <button type="button" className="icon-btn calc__step" aria-label={t.redo} title={t.redoHint} disabled={!future.length} onClick={() => stepTape('redo')}>
+            <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
+              <path d="M10 4l3 3-3 3M13 7H6.5a3.5 3.5 0 000 7H8" stroke="currentColor" strokeWidth="1.5" fill="none" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          </button>
           {tape.length > 0 && (
-            <button type="button" className="btn btn--small btn--quiet" onClick={() => setTape([])}>
+            <button type="button" className="btn btn--small btn--quiet" onClick={() => changeTape([])}>
               {s.clear}
             </button>
           )}

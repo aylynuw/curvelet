@@ -281,7 +281,9 @@ After the review rounds of 2026-11-13 (pen, images, projects, exam-figure fracti
 | Auto-update | Every new version is installed again by hand | The Tauri updater: a signing key pair, an update manifest published with each release, and a check at start that offers the new version |
 | Versions and releases | Always 0.1.0; builds live only as CI artifacts, and a new push cancels the run before it (`cancel-in-progress`), which kept dropping the Windows build | Bump the version per release; a tag starts a release run that is never cancelled and uploads the installers (and the updater manifest) to GitHub Releases |
 
-### Gaps to close: next
+### Gaps to close: done (2026-11-14)
+All five are built and checked: in the browser for the calculator and the PDF with a picture, by tests for the crossings and the TikZ and PDF fractions.
+
 | Item | Today | Direction | Done when |
 |---|---|---|---|
 | Calculator uses the graph's definitions | The calculator only knows what was defined on its own tape; `∫ f(x) dx` there says "No closed form" when f lives in the graph | The calculator reads the graph's definitions too; its own tape definitions win for the same name, and the tape says where a name comes from | With `f(x) = x^3 - 3x` in the graph, `f(2)` and `∫ f(x) dx` work in the calculator; changing f in the graph updates them |
@@ -289,6 +291,16 @@ After the review rounds of 2026-11-13 (pen, images, projects, exam-figure fracti
 | Images in vector PDF | A PDF with pictures is turned into one image of the page | Pictures embedded as images in the vector PDF, curves and text stay vector | Text in such a PDF can be selected and stays sharp when zoomed |
 | Exact crossings with pen curves | Crossings of a pen Bézier with another curve are found from the drawn pixels, so they are close but not exact | Solve the Bézier against lines, circles and y = f(x) numerically to full precision | Marking where a pen curve crosses y = x gives a point that lies on both to 1e-9 |
 | Undo on the calculator tape | Deleting or editing a tape line can't be taken back | Ctrl/Cmd+Z and Shift+Ctrl/Cmd+Z on the tape, like the expression list | A deleted definition comes back with Ctrl+Z, and the lines that use it recompute |
+
+### Then: the web version, and phones through it
+Phones get Curvelet as a web app, not a store app. App Store and Google Play wait until there is time and money for them (accounts, review, store listings).
+
+| Item | Direction | Done when |
+|---|---|---|
+| Hosted web version | Build the web app on its own and host it as static files (no server: everything runs in the browser) | The same build as the desktop app opens from a URL, with projects kept in the browser |
+| Install to the home screen (PWA) | A web app manifest, icons and a service worker that caches the app, MathLive and SymPy after the first visit | On iPhone and Android, "Add to Home Screen" opens it full screen, and it works with no connection after the first visit |
+| Phone fit | Go over every tool at 390 px with touch only: keypad, pen, geometry, exam lengths, the tape | Each tool can be used start to finish on a phone without a mouse or keyboard |
+| Updates on the web | The service worker notices a new version and offers to reload | A new deploy reaches an installed phone within a day |
 
 ## 6. Success criteria
 - Engine: test suite of known results (derivatives, integrals, roots, matrix operations) passes 100%

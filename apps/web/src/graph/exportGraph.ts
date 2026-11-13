@@ -8,8 +8,7 @@ import {
   type Rgb,
   type Scene,
   type SceneOptions,
-  type Viewport,
-} from '@math/render';
+  type Viewport, type PdfImage } from '@math/render';
 import type { Graphable } from '@math/engine';
 import { saveBlob } from '../files/save';
 
@@ -68,10 +67,38 @@ export function graphSvg(graphables: Graphable[], view: Viewport, opts: SceneOpt
   return sceneToSvg(scene, theme, underlay);
 }
 
-export function exportPdf(graphables: Graphable[], view: Viewport, opts: SceneOptions, el: Element, name: string) {
+/** pictures go in as images under the figure; curves and text stay vector */
+export function exportPdf(graphables: Graphable[], view: Viewport, opts: SceneOptions, el: Element, name: string, images: PdfImage[] = []) {
   const { scene, theme } = exportScene(graphables, view, opts, el);
   const rgb = (css: string) => cssToRgb(css, theme.background ?? '#ffffff');
-  download(new Blob([sceneToPdf(scene, theme, rgb) as BlobPart], { type: 'application/pdf' }), `${name}.pdf`);
+  download(new Blob([sceneToPdf(scene, theme, rgb, images) as BlobPart], { type: 'application/pdf' }), `${name}.pdf`);
+}
+
+const deflate = async (bytes: Uint8Array) =>
+  new Uint8Array(await new Response(new Blob([bytes as BlobPart]).stream().pipeThrough(new CompressionStream('deflate'))).arrayBuffer());
+
+/** a picture's pixels for the PDF: RGB and (when any pixel is see-through) alpha, both deflated */
+export async function pdfImage(src: string, place: Omit<PdfImage, 'pw' | 'ph' | 'rgb' | 'alpha'>): Promise<PdfImage> {
+  const img = new Image();
+  img.src = src;
+  await img.decode();
+  const [pw, ph] = [img.naturalWidth, img.naturalHeight];
+  const canvas = document.createElement('canvas');
+  [canvas.width, canvas.height] = [pw, ph];
+  const ctx = canvas.getContext('2d')!;
+  ctx.drawImage(img, 0, 0);
+  const data = ctx.getImageData(0, 0, pw, ph).data;
+  const rgb = new Uint8Array(pw * ph * 3);
+  const alpha = new Uint8Array(pw * ph);
+  let seeThrough = false;
+  for (let k = 0, j = 0; k < pw * ph; k++, j += 4) {
+    rgb[k * 3] = data[j]!;
+    rgb[k * 3 + 1] = data[j + 1]!;
+    rgb[k * 3 + 2] = data[j + 2]!;
+    alpha[k] = data[j + 3]!;
+    if (data[j + 3]! < 255) seeThrough = true;
+  }
+  return { ...place, pw, ph, rgb: await deflate(rgb), ...(seeThrough ? { alpha: await deflate(alpha) } : {}) };
 }
 
 export function exportTikz(graphables: Graphable[], view: Viewport, opts: SceneOptions, el: Element, name: string) {

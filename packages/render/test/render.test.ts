@@ -340,3 +340,32 @@ describe('statistics and complex functions on the graph', () => {
     expect(buildScene(graphs('z = x y'), V, { style: 'screen', series: () => 0 }).curves).toEqual([]);
   });
 });
+
+describe('exports keep exam fractions and pictures', () => {
+  const V = { cx: 0, cy: 0, scale: 40, width: 400, height: 300 } as never;
+  const w = new Workspace();
+  w.set('a', 'A = (2.2, -0.5)');
+  const coord = (n: number) => (n === 2.2 ? '11/5' : n === -0.5 ? '-√2/2' : String(n));
+  const s = buildScene(w.graphables(), V, { style: 'exam', series: () => 0, coord });
+  it('writes stacked fractions in TikZ and PDF', () => {
+    const tex = sceneToTikz(s, EXAM_THEME);
+    expect(tex).toContain('\\frac{11}{5}');
+    expect(tex).toContain('-\\frac{\\sqrt{2}}{2}');
+    const pdf = String.fromCharCode(...sceneToPdf(s, EXAM_THEME));
+    // numerator and denominator drawn apart, with a bar between
+    expect(pdf).toContain('(11) Tj');
+    expect(pdf).toContain('(5) Tj');
+    expect(pdf).toMatch(/ \d+(\.\d+)? 1 re f/);
+  });
+  it('puts pictures in the PDF as images, the figure still vector', () => {
+    const pic = { cx: 200, cy: 150, w: 100, h: 50, angle: 0.3, opacity: 0.5, pw: 2, ph: 1, rgb: new Uint8Array([1, 2, 3]), alpha: new Uint8Array([4, 5]) };
+    const pdf = String.fromCharCode(...sceneToPdf(s, EXAM_THEME, undefined, [pic]));
+    expect(pdf).toContain('/Subtype /Image /Width 2 /Height 1 /ColorSpace /DeviceRGB');
+    expect(pdf).toContain('/SMask');
+    expect(pdf).toContain('/Im0 Do');
+    // the image is listed in the page's resources, or readers skip it
+    expect(pdf).toMatch(/\/Resources << \/XObject << \/Im0 \d+ 0 R >>/);
+    expect(pdf).toContain('/ca 0.5');
+    expect(pdf).toContain('(11) Tj');
+  });
+});

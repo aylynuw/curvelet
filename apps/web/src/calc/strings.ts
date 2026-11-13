@@ -29,6 +29,7 @@ const en = {
   editingLine: (n: number) => `Editing line ${n}: Enter puts it back in place`,
   addingBelow: (n: number) => `Adding a line under line ${n}`,
   cancel: 'Cancel',
+  fromGraph: 'From the graph:',
 };
 
 export type CalcStrings = typeof en;
@@ -62,6 +63,7 @@ const ko: CalcStrings = {
   editingLine: (n: number) => `${n}번째 줄을 고치는 중입니다. Enter를 누르면 그 자리에 바뀝니다`,
   addingBelow: (n: number) => `${n}번째 줄 아래에 추가합니다`,
   cancel: '취소',
+  fromGraph: '그래프의 정의:',
 };
 
 export const CALC: Record<Lang, CalcStrings> = { en, ko };

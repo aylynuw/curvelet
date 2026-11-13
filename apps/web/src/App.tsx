@@ -272,7 +272,8 @@ export function App() {
   const [, rerender] = useReducer((n: number) => n + 1, 0);
 
   // SymPy runs in a worker; the resolver caches its answers for the workspace
-  const resolver = useMemo(() => new CasResolver(createWorkerRuntime(setEngine)), []);
+  // the engine's status can change while another component renders (the calculator asks it then), so it is set just after
+  const resolver = useMemo(() => new CasResolver(createWorkerRuntime((st) => queueMicrotask(() => setEngine(st)))), []);
 
   // the engine workspace, kept in step with `lines`
   const ws = useMemo(() => {
@@ -1063,6 +1064,8 @@ export function App() {
         <main className="workspace workspace--tool">
           <CalculatorTool
             onFormat={setNumberForm}
+            // the graph's let/const lines, so f defined there works here too
+            graphDefs={ws.definitions().map((d) => ({ name: d.name, source: d.source }))}
             s={cs}
             t={t}
             settings={settings}

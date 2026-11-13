@@ -27,8 +27,7 @@ import {
 import { Suspense, lazy, useEffect, useMemo, useReducer, useRef, useState, type KeyboardEvent, type PointerEvent } from 'react';
 import type { Graph3DHandle, Surface } from './Graph3D';
 import type { Strings } from '../i18n';
-import { download, exportPdf, exportPng, exportSvg, exportTikz, graphSvg, readTheme } from './exportGraph';
-import { canvasToPdf, svgToCanvas } from '../geo/exportFigure';
+import { exportPdf, exportPng, exportSvg, exportTikz, graphSvg, pdfImage, readTheme } from './exportGraph';
 import { exportGif, exportVideo, videoType, type Sweep } from './animate';
 import { MathText } from '../components/MathText';
 import { Menu, type MenuItem } from './Menu';
@@ -817,13 +816,16 @@ export function GraphPanel({
       })
       .join('');
     if (kind === 'tex') return exportTikz(graphables, viewport, sceneOpts, el, name);
-    if (kind === 'pdf' && !underlay) return exportPdf(graphables, viewport, sceneOpts, el, name);
+    if (kind === 'pdf') {
+      // pictures go in as images; the curves and text over them stay vector
+      const images = await Promise.all(
+        pictures.map((p) => pdfImage(p.src, { cx: toPx(viewport, p.cx), cy: toPy(viewport, p.cy), w: p.w * viewport.scale, h: p.h * viewport.scale, angle: p.angle ?? 0, opacity: p.opacity })),
+      );
+      return exportPdf(graphables, viewport, sceneOpts, el, name, images);
+    }
     const svg = graphSvg(graphables, viewport, sceneOpts, el, underlay);
     if (kind === 'svg') return exportSvg(svg, name);
     if (kind === 'png') return exportPng(svg, size.width, size.height, name);
-    // a PDF with pictures: the page as a fine image (the vector writer has no pictures)
-    const canvas = await svgToCanvas(svg, size.width, size.height, 4);
-    await download(await canvasToPdf(canvas, size.width, size.height), `${name}.pdf`);
   };
 
   const animName = sliders.some((s) => s.name === animated) ? animated! : sliders[0]?.name ?? null;

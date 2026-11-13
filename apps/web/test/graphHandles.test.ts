@@ -36,3 +36,24 @@ describe('exact crossings', () => {
     near(exactCrossing({ kind: 'circle', c: { x: 0, y: 0 }, r: 5 }, { kind: 'circle', c: { x: 8, y: 0 }, r: 5 }, { x: 4.01, y: 2.98 }, 0.1), 4, 3);
   });
 });
+
+describe('exact crossings with pen curves', () => {
+  // one cubic piece from (0, 0) to (3, 0), bulging up
+  const shape = { type: 'path', controls: [{ x: 0, y: 0 }, { x: 1, y: 3 }, { x: 2, y: 3 }, { x: 3, y: 0 }] };
+  const on = (q: { x: number; y: number }, f: (x: number) => number) => Math.abs(q.y - f(q.x));
+  it('finds where a pen curve meets a line, a circle, y = f(x) and another pen curve', () => {
+    // each `near` is where the drawn curves cross on screen, as the graph finds it
+    const near = { x: 1.01, y: 1.99 };
+    const pen = primOfShape(shape, near)!;
+    expect(pen.kind).toBe('bezier');
+    const line = exactCrossing(pen, { kind: 'line', a: { x: 0, y: 0 }, b: { x: 1, y: 2 } }, near, 0.1)!;
+    expect(on(line, (x) => 2 * x)).toBeLessThan(1e-9);
+    const circle = exactCrossing({ kind: 'circle', c: { x: 0, y: 0 }, r: 1.3 }, pen, { x: 0.48, y: 1.21 }, 0.1)!;
+    expect(Math.abs(Math.hypot(circle.x, circle.y) - 1.3)).toBeLessThan(1e-9);
+    const fn = exactCrossing({ kind: 'fn', f: (x) => x * x }, pen, { x: 1.49, y: 2.24 }, 0.2)!;
+    expect(on(fn, (x) => x * x)).toBeLessThan(1e-9);
+    const other = primOfShape({ type: 'path', controls: [{ x: 0, y: 2 }, { x: 1, y: 2 }, { x: 2, y: 2 }, { x: 3, y: 2 }] }, near)!;
+    const both = exactCrossing(pen, other, { x: 1.01, y: 2 }, 0.2)!;
+    expect(Math.abs(both.y - 2)).toBeLessThan(1e-9);
+  });
+});

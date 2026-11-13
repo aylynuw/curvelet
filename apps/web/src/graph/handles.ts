@@ -96,11 +96,65 @@ export function crossingsWith(mine: number[], others: number[], limit = 60): { x
 
 type P = { x: number; y: number };
 /** what a curve is, near a crossing, for finding that crossing exactly */
-export type Prim = { kind: 'fn'; f: (x: number) => number } | { kind: 'line'; a: P; b: P } | { kind: 'circle'; c: P; r: number };
+export type Prim =
+  | { kind: 'fn'; f: (x: number) => number }
+  | { kind: 'line'; a: P; b: P }
+  | { kind: 'circle'; c: P; r: number }
+  /** one cubic piece of a pen curve: P0, C1, C2, P1 */
+  | { kind: 'bezier'; q: [P, P, P, P] };
+
+/** a point on a cubic piece at t in [0, 1] */
+export function bezierAt(q: [P, P, P, P], t: number): P {
+  const u = 1 - t;
+  const [a, b, c, d] = [u * u * u, 3 * u * u * t, 3 * u * t * t, t * t * t];
+  return { x: a * q[0].x + b * q[1].x + c * q[2].x + d * q[3].x, y: a * q[0].y + b * q[1].y + c * q[2].y + d * q[3].y };
+}
+/** the parameter of the piece's point nearest p */
+function nearestT(q: [P, P, P, P], p: P): number {
+  let best = 0;
+  let bestD = Infinity;
+  for (let k = 0; k <= 200; k++) {
+    const b = bezierAt(q, k / 200);
+    const d = Math.hypot(b.x - p.x, b.y - p.y);
+    if (d < bestD) [best, bestD] = [k / 200, d];
+  }
+  return best;
+}
+/** where g changes sign near t0 on [0, 1], halved down to full precision */
+function rootNear(g: (t: number) => number, t0: number): number | null {
+  const steps = 40;
+  const [lo0, hi0] = [Math.max(0, t0 - 0.08), Math.min(1, t0 + 0.08)];
+  let best: [number, number] | null = null;
+  for (let k = 0; k < steps; k++) {
+    const [a, b] = [lo0 + ((hi0 - lo0) * k) / steps, lo0 + ((hi0 - lo0) * (k + 1)) / steps];
+    if (Math.sign(g(a)) * Math.sign(g(b)) <= 0 && (!best || Math.abs((a + b) / 2 - t0) < Math.abs((best[0] + best[1]) / 2 - t0))) best = [a, b];
+  }
+  if (!best) return null;
+  let [lo, hi] = best;
+  if (g(lo) === 0) return lo;
+  for (let k = 0; k < 80; k++) {
+    const m = (lo + hi) / 2;
+    if (Math.sign(g(m)) === Math.sign(g(lo))) lo = m;
+    else hi = m;
+  }
+  return (lo + hi) / 2;
+}
 
 /** the straight piece or circle of a shape nearest to `p` (a polygon's nearest side) */
-export function primOfShape(shape: { type: string; a?: P; b?: P; c?: P; r?: number; pts?: P[] }, p: P): Prim | null {
+export function primOfShape(shape: { type: string; a?: P; b?: P; c?: P; r?: number; pts?: P[]; controls?: P[] }, p: P): Prim | null {
   if (shape.type === 'circle' && shape.c && shape.r !== undefined) return { kind: 'circle', c: shape.c, r: shape.r };
+  if (shape.type === 'path' && shape.controls && shape.controls.length >= 4) {
+    // the cubic piece passing nearest p
+    let best: Prim | null = null;
+    let bestD = Infinity;
+    for (let k = 0; k + 3 < shape.controls.length; k += 3) {
+      const q = shape.controls.slice(k, k + 4) as [P, P, P, P];
+      const b = bezierAt(q, nearestT(q, p));
+      const d = Math.hypot(b.x - p.x, b.y - p.y);
+      if (d < bestD) [best, bestD] = [{ kind: 'bezier', q }, d];
+    }
+    return best;
+  }
   if (shape.a && shape.b) return { kind: 'line', a: shape.a, b: shape.b };
   if (shape.type === 'polygon' && shape.pts && shape.pts.length > 1) {
     let best: Prim | null = null;
@@ -124,6 +178,49 @@ const nearest = (pts: P[], p: P) => pts.reduce<P | null>((best, q) => (!best || 
 
 /** the crossing of two curves near `p`, worked out exactly (or null to keep the approximate one) */
 export function exactCrossing(u: Prim, v: Prim, p: P, span: number): P | null {
+  // a pen curve: solved along its parameter, to full precision
+  if (v.kind === 'bezier' && u.kind !== 'bezier') return exactCrossing(v, u, p, span);
+  if (u.kind === 'bezier') {
+    const q = u.q;
+    if (v.kind === 'bezier') {
+      // two pen curves: Newton's method on both parameters from the nearest points
+      let [t, w] = [nearestT(q, p), nearestT(v.q, p)];
+      for (let k = 0; k < 50; k++) {
+        const [a, b] = [bezierAt(q, t), bezierAt(v.q, w)];
+        const h = 1e-6;
+        const [at, bw] = [bezierAt(q, Math.min(1, t + h)), bezierAt(v.q, Math.min(1, w + h))];
+        const [j11, j21, j12, j22] = [(at.x - a.x) / h, (at.y - a.y) / h, -(bw.x - b.x) / h, -(bw.y - b.y) / h];
+        const [fx, fy] = [a.x - b.x, a.y - b.y];
+        const det = j11 * j22 - j12 * j21;
+        if (Math.abs(det) < 1e-14) return null;
+        t -= (fx * j22 - fy * j12) / det;
+        w -= (j11 * fy - j21 * fx) / det;
+        if (Math.hypot(fx, fy) < 1e-13) break;
+      }
+      if (t < -1e-9 || t > 1 + 1e-9 || w < -1e-9 || w > 1 + 1e-9) return null;
+      return bezierAt(q, t);
+    }
+    const t0 = nearestT(q, p);
+    const g =
+      v.kind === 'line'
+        ? (t: number) => {
+            const b = bezierAt(q, t);
+            return (v.b.x - v.a.x) * (b.y - v.a.y) - (v.b.y - v.a.y) * (b.x - v.a.x);
+          }
+        : v.kind === 'circle'
+          ? (t: number) => {
+              const b = bezierAt(q, t);
+              return (b.x - v.c.x) ** 2 + (b.y - v.c.y) ** 2 - v.r * v.r;
+            }
+          : (t: number) => {
+              const b = bezierAt(q, t);
+              return b.y - v.f(b.x);
+            };
+    const t = rootNear(g, t0);
+    if (t === null) return null;
+    const hit = bezierAt(q, t);
+    return Math.hypot(hit.x - p.x, hit.y - p.y) <= span * 4 ? hit : null;
+  }
   if (u.kind === 'fn' && v.kind !== 'fn') return exactCrossing(v, u, p, span);
   if (u.kind === 'circle' && v.kind === 'line') return exactCrossing(v, u, p, span);
   if (u.kind === 'line' && v.kind === 'line') {

@@ -3,7 +3,7 @@ export { sampleCurve, sampleParametric, curveRegions, contour, implicitRegion, t
 export { buildScene, coordinate, piLabel, piStep, planeAt, type Scene, type SceneOptions, type Style, type Label } from './scene';
 export { pointsOfInterest, curveAt, tidy, type Poi, type PoiKind } from './analysis';
 export { sceneToSvg } from './svg';
-export { sceneToPdf } from './pdf';
+export { sceneToPdf, type PdfImage } from './pdf';
 export { sceneToTikz } from './tikz';
 export { drawScene } from './canvas';
 export { colourOf, domainColoring, type DomainImage } from './domain';
