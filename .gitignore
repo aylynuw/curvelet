@@ -10,3 +10,7 @@ apps/desktop/src-tauri/gen
 .claude/
 .DS_Store
 installers/
+# the landing site and its screenshots stay on this computer; only the app's code is published
+/site/
+/site-upload
+/docs/portfolio/site/

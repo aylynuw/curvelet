@@ -34,7 +34,7 @@ If this policy changes, the new version will be posted here with a new date.
 
 ## Contact
 
-[Your contact e-mail or support page]
+Questions about Curvelet go to aylyn@uwux.dev.
 
 ---
 
@@ -74,4 +74,4 @@ If this policy changes, the new version will be posted here with a new date.
 
 ## 연락처
 
-[연락받을 이메일 또는 지원 페이지]
+Curvelet에 관한 문의는 aylyn@uwux.dev로 보내 주세요.
