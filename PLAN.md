@@ -270,6 +270,26 @@ Not done yet:
 - Each symbol in the keypad can also be typed, and converts both ways (round-trip tests)
 - A triangle with its circumcircle can be built by clicking alone, and dragging a vertex moves everything built on it
 
+## 5c. Next (2026-11-14)
+
+After the review rounds of 2026-11-13 (pen, images, projects, exam-figure fractions and lengths, graph tools, calculator tape, graph-paper DMG).
+
+### Release: planned, not started
+| Item | Today | Direction |
+|---|---|---|
+| Windows code signing | The installer is unsigned, so SmartScreen warns on first run | A code-signing certificate (OV or EV), used by the Windows CI job to sign the NSIS and MSI installers |
+| Auto-update | Every new version is installed again by hand | The Tauri updater: a signing key pair, an update manifest published with each release, and a check at start that offers the new version |
+| Versions and releases | Always 0.1.0; builds live only as CI artifacts, and a new push cancels the run before it (`cancel-in-progress`), which kept dropping the Windows build | Bump the version per release; a tag starts a release run that is never cancelled and uploads the installers (and the updater manifest) to GitHub Releases |
+
+### Gaps to close: next
+| Item | Today | Direction | Done when |
+|---|---|---|---|
+| Calculator uses the graph's definitions | The calculator only knows what was defined on its own tape; `∫ f(x) dx` there says "No closed form" when f lives in the graph | The calculator reads the graph's definitions too; its own tape definitions win for the same name, and the tape says where a name comes from | With `f(x) = x^3 - 3x` in the graph, `f(2)` and `∫ f(x) dx` work in the calculator; changing f in the graph updates them |
+| Stacked fractions in PDF and TikZ | Exam figures stack 11/5 on screen, in SVG and PNG, but PDF and TikZ write "11/5" on one line | Both writers set guide numbers (and typed lengths) as fractions: a drawn bar in the PDF, `\frac` in TikZ | An exam figure with 11/5 and √2/2 looks the same in all four exports |
+| Images in vector PDF | A PDF with pictures is turned into one image of the page | Pictures embedded as images in the vector PDF, curves and text stay vector | Text in such a PDF can be selected and stays sharp when zoomed |
+| Exact crossings with pen curves | Crossings of a pen Bézier with another curve are found from the drawn pixels, so they are close but not exact | Solve the Bézier against lines, circles and y = f(x) numerically to full precision | Marking where a pen curve crosses y = x gives a point that lies on both to 1e-9 |
+| Undo on the calculator tape | Deleting or editing a tape line can't be taken back | Ctrl/Cmd+Z and Shift+Ctrl/Cmd+Z on the tape, like the expression list | A deleted definition comes back with Ctrl+Z, and the lines that use it recompute |
+
 ## 6. Success criteria
 - Engine: test suite of known results (derivatives, integrals, roots, matrix operations) passes 100%
 - Interaction: graph pans at about 60 fps with 10+ expressions; symbolic results within 2 s once SymPy has loaded
