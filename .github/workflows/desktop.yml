@@ -98,7 +98,7 @@ jobs:
           # on a version tag: a published release here; otherwise just the build
           tagName: ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || '' }}
           releaseName: ${{ startsWith(github.ref, 'refs/tags/v') && format('Curvelet {0}', github.ref_name) || '' }}
-          releaseBody: Installers for Windows, macOS and Linux. Installed apps update themselves. The macOS and Windows builds are not code-signed yet, so the first install shows a warning.
+          releaseBody: 'Installers for Windows, macOS and Linux. Installed apps update themselves. The macOS and Windows builds are not code-signed yet, so the first install shows a warning. Windows code signing: free code signing by SignPath.io, certificate by SignPath Foundation, applied for and pending; see the code signing policy at https://github.com/aylynuw/curvelet#code-signing-policy'
           releaseDraft: false
           includeUpdaterJson: true
 

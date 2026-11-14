@@ -277,8 +277,8 @@ After the review rounds of 2026-11-13 (pen, images, projects, exam-figure fracti
 ### Release: planned, not started
 | Item | Today | Direction |
 |---|---|---|
-| Windows code signing | The installer is unsigned, so SmartScreen warns on first run | A code-signing certificate (OV or EV), used by the Windows CI job to sign the NSIS and MSI installers |
-| Auto-update | Every new version is installed again by hand | The Tauri updater: a signing key pair, an update manifest published with each release, and a check at start that offers the new version |
+| Windows code signing | The installer is unsigned, so SmartScreen warns on first run | Applied for SignPath Foundation's free certificate for open source (2026-11-14); the code signing policy is in the README. Once approved: the Windows CI job uploads the unsigned installers, `signpath/github-action-submit-signing-request` signs them after a manual approval, the updater `.sig` files are made again from the signed installers, then they go on the release. Warnings fade as downloads build SmartScreen reputation |
+| Auto-update | Done in 0.2.0, releases on this repository from 0.2.1 | The Tauri updater: a signing key pair, an update manifest published with each release, and a check at start that offers the new version |
 | Versions and releases | Always 0.1.0; builds live only as CI artifacts, and a new push cancels the run before it (`cancel-in-progress`), which kept dropping the Windows build | Bump the version per release; a tag starts a release run that is never cancelled and uploads the installers (and the updater manifest) to GitHub Releases |
 
 ### Gaps to close: done (2026-11-14)

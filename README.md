@@ -61,6 +61,16 @@ The desktop app is a [Tauri](https://tauri.app) shell around the same web app; b
 
 [PLAN.md](PLAN.md) has the feature list, what's been built and what comes next.
 
+## Code signing policy
+
+The Windows installers are to be signed with free code signing provided by [SignPath.io](https://about.signpath.io), certificate by [SignPath Foundation](https://signpath.org). The application is under review; until it is approved the installers are unsigned, and Windows shows a SmartScreen warning (choose "More info", then "Run anyway").
+
+- Committers and reviewers: [aylynuw](https://github.com/aylynuw), the only maintainer
+- Approvers: [aylynuw](https://github.com/aylynuw), who approves each release by hand before it is signed
+- Only installers built by this repository's GitHub Actions workflow from its own source are signed
+
+Privacy: the desktop app sends nothing about your work anywhere. Its only network request is a check for a newer version on this repository's releases page, a few seconds after it starts. See the [privacy policy](docs/store/privacy.md).
+
 ## License
 
 The code is under the [MIT License](LICENSE).
@@ -73,4 +83,4 @@ The name "Curvelet" and its logo are mine and aren't covered by that license. If
 
 Curvelet은 인터넷 없이 쓰는 그래프 계산기, 기호 계산기, 기하 도구입니다. 설치 파일은 [릴리스 페이지](https://github.com/aylynuw/curvelet/releases)에 있고, 데스크톱 앱은 스스로 업데이트합니다(0.2.0을 쓰고 있다면 다음 버전만 한 번 직접 설치해 주세요).
 
-코드는 Claude Code가 작성했고, 기능 범위와 디자인 방향을 정하고 앱에서 직접 써 보며 검증한 것은 제가 했습니다. 코드는 MIT 라이선스로 누구나 쓸 수 있지만, "Curvelet"이라는 이름과 로고는 제 것이라 라이선스에 포함되지 않습니다.
+코드는 Claude Code가 작성했고, 기능 범위와 디자인 방향을 정하고 앱에서 직접 써 보며 검증한 것은 제가 했습니다. Windows 설치 파일은 SignPath Foundation의 무료 코드 서명을 신청해 둔 상태이고, 승인 전까지는 서명이 없어 SmartScreen 경고가 뜹니다("추가 정보" → "실행"). 코드는 MIT 라이선스로 누구나 쓸 수 있지만, "Curvelet"이라는 이름과 로고는 제 것이라 라이선스에 포함되지 않습니다.

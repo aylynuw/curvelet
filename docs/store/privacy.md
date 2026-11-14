@@ -1,6 +1,6 @@
 # Curvelet privacy policy
 
-Last updated: 12 November 2026
+Last updated: 14 November 2026
 
 This policy covers Curvelet on the web, iOS, Android, macOS and Windows.
 
@@ -24,6 +24,10 @@ When you share a graph, the app puts the graph itself, compressed, into the link
 
 Exact answers come from SymPy running inside the app (through Pyodide). The engine ships with the app; on the web it is downloaded once from the same site as the app and kept for offline use.
 
+## Updates (desktop app)
+
+A few seconds after it starts, the desktop app asks GitHub whether a newer version is listed on Curvelet's releases page (github.com/aylynuw/curvelet/releases). The request carries nothing about you or your work; like any web request, GitHub sees your IP address. When an update is offered, it is only downloaded and installed if you choose to.
+
 ## Children
 
 The app is suitable for all ages and collects no personal information from anyone, including children.
@@ -40,7 +44,7 @@ Questions about Curvelet go to aylyn@uwux.dev.
 
 # Curvelet 개인정보 처리방침
 
-최종 수정: 2026년 11월 12일
+최종 수정: 2026년 11월 14일
 
 웹, iOS, Android, macOS, Windows용 Curvelet(커블릿)에 적용됩니다.
 
@@ -63,6 +67,10 @@ Questions about Curvelet go to aylyn@uwux.dev.
 ## 기호 계산 엔진
 
 정확한 답은 앱 안에서 실행되는 SymPy(Pyodide 사용)가 계산합니다. 엔진은 앱에 들어 있고, 웹에서는 앱과 같은 사이트에서 한 번 내려받아 오프라인용으로 보관합니다.
+
+## 업데이트 (데스크톱 앱)
+
+데스크톱 앱은 실행하고 몇 초 뒤에 GitHub의 Curvelet 릴리스 페이지(github.com/aylynuw/curvelet/releases)에 새 버전이 있는지 확인합니다. 이 요청에는 사용자나 작업 내용에 관한 정보가 담기지 않으며, 다른 웹 요청과 마찬가지로 GitHub는 IP 주소를 알 수 있습니다. 업데이트는 사용자가 선택할 때에만 내려받아 설치합니다.
 
 ## 어린이
 
