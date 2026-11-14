@@ -15,3 +15,6 @@ installers/
 /site-upload
 /docs/portfolio/site/
 Curvelet-site.zip
+
+# the problem pack, made by scripts/problem-pack.mjs
+/problems/dist/

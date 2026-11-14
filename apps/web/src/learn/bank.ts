@@ -1,5 +1,6 @@
 import { loadBank, parseBank, type Bank } from '@math/steps';
 import BUNDLED from '../../../../problems/bank.json?raw';
+import { readZip } from './zip';
 
 /**
  * The exam-style problem set. The app ships with the one in the repository
@@ -69,3 +70,25 @@ export async function downloadBank(): Promise<{ count: number; skipped: number }
 
 /** Goes back to the set the app came with. */
 export const resetBank = () => setBankText(BUNDLED, 'bundled');
+
+/**
+ * Uses a set from a file: one set (.json), or a pack (.zip) of sets whose
+ * problems are put together into one.
+ */
+export async function openBankFile(file: File): Promise<{ count: number; skipped: number }> {
+  if (!/\.zip$/i.test(file.name)) return setBankText(await file.text(), 'file');
+  const files = (await readZip(await file.arrayBuffer())).filter((f) => /\.json$/i.test(f.name) && !/(^|\/)(__MACOSX|\.)/.test(f.name));
+  const sets = files
+    .map((f) => {
+      try {
+        return JSON.parse(f.text) as { format?: string; title?: unknown; problems?: unknown[] };
+      } catch {
+        return null;
+      }
+    })
+    .filter((s): s is { format: string; title?: unknown; problems: unknown[] } => s?.format === 'curvelet-problems' && Array.isArray(s.problems));
+  if (sets.length === 0) throw new Error('No problem sets in this file');
+  const name = file.name.replace(/\.zip$/i, '');
+  const title = sets.length === 1 && sets[0]!.title ? sets[0]!.title : { ko: `문제집 묶음 (${name})`, en: `Problem pack (${name})` };
+  return setBankText(JSON.stringify({ format: 'curvelet-problems', version: 1, title, problems: sets.flatMap((s) => s.problems) }), 'file');
+}

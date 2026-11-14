@@ -1,6 +1,6 @@
 import type { EvalSettings, SymbolicResolver } from '@math/engine';
 import { useEffect, useReducer, useRef, useState } from 'react';
-import { bankState, downloadBank, onBank, resetBank, setBankText } from '../learn/bank';
+import { bankState, downloadBank, onBank, openBankFile, resetBank } from '../learn/bank';
 import type { Lang } from '../i18n';
 import { Practice } from '../learn/Practice';
 import type { IntegralAsk } from '../learn/StepsView';
@@ -135,7 +135,7 @@ function BankControl({ learn, lang, onNotice }: { learn: LearnStrings; lang: Lan
   const open = async (file: File | undefined) => {
     if (!file) return;
     try {
-      done(setBankText(await file.text(), 'file'));
+      done(await openBankFile(file));
     } catch {
       onNotice(learn.bankBadFile);
     }
@@ -160,7 +160,7 @@ function BankControl({ learn, lang, onNotice }: { learn: LearnStrings; lang: Lan
       <input
         ref={fileRef}
         type="file"
-        accept=".json,application/json"
+        accept=".json,.zip,application/json,application/zip"
         hidden
         onChange={(e) => {
           void open(e.target.files?.[0]);

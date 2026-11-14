@@ -11,6 +11,7 @@
     "dev": "npm run dev --workspace @math/web",
     "build:web": "npm run build --workspace @math/web",
     "build:desktop": "npm run build --workspace @math/desktop",
-    "build:mobile": "npm run build --workspace @math/mobile"
+    "build:mobile": "npm run build --workspace @math/mobile",
+    "problems:pack": "node scripts/problem-pack.mjs"
   }
 }

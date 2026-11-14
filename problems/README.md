@@ -4,6 +4,10 @@
 
 The problems are new ones written in the style of the CSAT (수능) and its mock exams, not past exam questions.
 
+## The problem pack
+
+`npm run problems:pack` makes `problems/dist/curvelet-problems.zip`: one set per unit (수학Ⅰ, 수학Ⅱ, 미적분, 확률과 통계, 기하) with the hand-written problems of that unit from `bank.json` and, for every template of the unit at the basic, advanced and exam levels, 20 problems with fixed numbers (about 1,600 in all). Open the zip as it is with **Open a set file** in the Study tab; it replaces the set in use, and **Use the built-in set** goes back. `node scripts/problem-pack.mjs 40` makes 40 per template.
+
 ## Format
 
 ```json
