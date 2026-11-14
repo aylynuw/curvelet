@@ -302,6 +302,14 @@ Phones get Curvelet as a web app, not a store app. App Store and Google Play wai
 | Phone fit | Go over every tool at 390 px with touch only: keypad, pen, geometry, exam lengths, the tape | Each tool can be used start to finish on a phone without a mouse or keyboard |
 | Updates on the web | The service worker notices a new version and offers to reload | A new deploy reaches an installed phone within a day |
 
+### Later: a separate site for sharing problems (decided 2026-11-14)
+Uploading problems, sharing worked solutions and anything that needs accounts or a server goes on a separate website, built later. The app stays offline: it keeps the built-in problem set, "Get the latest set" (problems/bank.json) and opening set files or packs (.zip), which is how problems from that site will reach it.
+
+| Item | Direction | Done when |
+|---|---|---|
+| Problem-sharing site | Its own web project with accounts: upload a problem with its answer and working, review before publishing, browse by unit and level | A problem uploaded and approved there can be downloaded as a Curvelet set and opened in the app |
+| Ratings and rankings | On that site, from problems solved there; nothing in the offline app depends on it | Not started; decide after the site exists |
+
 ## 6. Success criteria
 - Engine: test suite of known results (derivatives, integrals, roots, matrix operations) passes 100%
 - Interaction: graph pans at about 60 fps with 10+ expressions; symbolic results within 2 s once SymPy has loaded
