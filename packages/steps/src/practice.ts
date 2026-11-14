@@ -316,6 +316,28 @@ export function nextProblem(topic: Topic, random = Math.random, level: Level = '
   return makeProblem(list[Math.floor(random() * list.length)]!, Math.floor(random() * 2 ** 31));
 }
 
+/** what makes two problems the same to a student: the question as shown */
+export const problemKey = (p: Problem): string => p.prompt?.ko ?? p.question;
+
+/**
+ * A new problem not among `recent` (keys from problemKey). Small pools can run
+ * out: after enough tries the one least recently seen is taken.
+ */
+export function freshProblem(topic: Topic, level: Level, recent: readonly string[], random = Math.random): Problem {
+  const seen = new Set(recent);
+  let best: Problem | null = null;
+  let bestAge = -1;
+  for (let k = 0; k < 80; k++) {
+    const p = nextProblem(topic, random, level);
+    const key = problemKey(p);
+    if (!seen.has(key)) return p;
+    // the older it was seen, the better: recent is oldest first
+    const age = recent.length - recent.lastIndexOf(key);
+    if (age > bestAge) [best, bestAge] = [p, age];
+  }
+  return best!;
+}
+
 const ctx = { vars: ['x'], value: () => undefined, func: () => undefined, angle: 'rad' as const };
 const POINTS = [0.37, 0.81, 1.23, 1.77, 2.31, 2.93, -0.53, -1.41];
 

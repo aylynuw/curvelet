@@ -88,3 +88,31 @@ describe('mock exam', () => {
     }
   });
 });
+
+describe('fresh problems', () => {
+  it('does not repeat recent problems while there are others', async () => {
+    const { freshProblem, problemKey, LEVEL_TEMPLATES } = await import('../src');
+    for (const [level, topic] of [['basic', 'geometry'], ['exam', 'algebra'], ['basic', 'derivative']] as const) {
+      const recent: string[] = [];
+      for (let k = 0; k < 60; k++) {
+        const p = freshProblem(topic, level, recent);
+        expect(recent, `${level} ${topic} #${k}`).not.toContain(problemKey(p));
+        recent.push(problemKey(p));
+      }
+      expect(LEVEL_TEMPLATES[level][topic]!.length).toBeGreaterThan(0);
+    }
+  });
+
+  it('takes the least recently seen when every problem has been seen', async () => {
+    const { freshProblem, problemKey, makeProblem, LEVEL_TEMPLATES } = await import('../src');
+    // a pool of one fixed problem: the bank's only problem in a unit and level
+    const saved = LEVEL_TEMPLATES.advanced.geometry;
+    LEVEL_TEMPLATES.advanced.geometry = ['adv-geo-hyperbola'];
+    const all = new Set<string>();
+    for (let seed = 1; seed < 200; seed++) all.add(problemKey(makeProblem('adv-geo-hyperbola', seed)));
+    const recent = [...all];
+    const p = freshProblem('geometry', 'advanced', recent);
+    expect(recent.slice(0, 3)).toContain(problemKey(p));
+    LEVEL_TEMPLATES.advanced.geometry = saved;
+  });
+});

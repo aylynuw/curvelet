@@ -1,6 +1,6 @@
 import type { EvalSettings, Node } from '@math/engine';
 import { printNode } from '@math/engine';
-import { checkAnswer, levelTopics, nextProblem, type Level, type Problem, type Topic, type Verdict } from '@math/steps';
+import { checkAnswer, freshProblem, levelTopics, problemKey, type Level, type Problem, type Topic, type Verdict } from '@math/steps';
 import { useRef, useState } from 'react';
 import type { Lang } from '../i18n';
 import { RichText } from '../teach/FigureView';
@@ -9,11 +9,19 @@ import { MathInput } from '../components/MathInput';
 import { LatexText, MathText } from '../components/MathText';
 import { textToLatex } from '../math/latex';
 import type { MathfieldElement } from '../math/mathlive';
+import { markSeen, recentOf } from './recent';
 import { StepsView, type IntegralAsk } from './StepsView';
 import type { LearnStrings } from './strings';
 
 const LEVELS: Level[] = ['basic', 'advanced', 'exam'];
 const PREF = 'curvelet.practice.v1';
+/** a problem the student hasn't seen lately, remembered as seen */
+function newProblem(topic: Topic, level: Level): Problem {
+  const p = freshProblem(topic, level, recentOf(level, topic));
+  markSeen(level, topic, problemKey(p));
+  return p;
+}
+
 function loadPref(): { level: Level; topic: Topic } {
   try {
     const v = JSON.parse(localStorage.getItem(PREF) ?? 'null');
@@ -63,7 +71,7 @@ export function Practice({
   onAnswer: (listener: () => void) => () => void;
 }) {
   const [{ level, topic }, setPref] = useState(loadPref);
-  const [problem, setProblem] = useState<Problem>(() => nextProblem(topic, Math.random, level));
+  const [problem, setProblem] = useState<Problem>(() => newProblem(topic, level));
   const exam = problem.value !== undefined;
   const [input, setInput] = useState('');
   const [verdict, setVerdict] = useState<Verdict | null>(null);
@@ -81,7 +89,7 @@ export function Practice({
     } catch {
       // kept for this visit
     }
-    setProblem(nextProblem(t, Math.random, l));
+    setProblem(newProblem(t, l));
     setInput('');
     setVerdict(null);
     setRevealed(false);
