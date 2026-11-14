@@ -63,9 +63,15 @@ export function Pages({
   void fontsReady;
 
   const gap = px(ITEM_GAP_MM);
-  const pages: Page[] = paginate(heights.problems, { column: contentH, first: contentH - heights.header, columns: sheet.columns, gap });
+  // the heights are measured after a render, so right after a problem is added or
+  // removed they can be one step behind: fit them to the problems there are now
+  const n = sheet.problems.length;
+  const fit = (list: number[]) => Array.from({ length: n }, (_, k) => list[k] ?? 0);
+  const pages: Page[] = n
+    ? paginate(fit(heights.problems), { column: contentH, first: contentH - heights.header, columns: sheet.columns, gap })
+    : [{ columns: [[]] }];
   const keyPages: Page[] = sheet.answerKey && sheet.problems.length
-    ? paginate(heights.answers, { column: contentH, first: contentH - heights.key, columns: sheet.columns, gap: px(3) })
+    ? paginate(fit(heights.answers), { column: contentH, first: contentH - heights.key, columns: sheet.columns, gap: px(3) })
     : [];
   const total = pages.length + keyPages.length;
 

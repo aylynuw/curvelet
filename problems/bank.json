@@ -1,0 +1,680 @@
+{
+  "format": "curvelet-problems",
+  "version": 1,
+  "title": {
+    "ko": "Curvelet 평가원 스타일 문제집",
+    "en": "Curvelet exam-style problem set"
+  },
+  "note": {
+    "ko": "수능과 평가원 모의평가의 출제 경향을 따라 새로 만든 문제입니다. 실제 기출 문항이 아닙니다.",
+    "en": "New problems written in the style of the CSAT and its mock exams. They are not past exam questions."
+  },
+  "problems": [
+    {
+      "id": "a01",
+      "unit": "algebra",
+      "level": "exam",
+      "points": 3,
+      "prompt": {
+        "ko": "함수 $$f(x) = \\log_{2}(x + a) + b$$의 그래프의 점근선이 직선 $$x = -4$$이고, 그래프가 점 $$(0, 3)$$을 지날 때, $$f(12)$$의 값은? (단, $$a, b$$는 상수이다.)",
+        "en": "The graph of $$f(x) = \\log_{2}(x + a) + b$$ has the asymptote $$x = -4$$ and passes through $$(0, 3)$$. Find $$f(12)$$."
+      },
+      "answer": 5,
+      "solution": {
+        "ko": [
+          "점근선이 $$x = -4$$이므로 $$a = 4$$",
+          "$$f(0) = \\log_{2} 4 + b = 2 + b = 3$$에서 $$b = 1$$",
+          "$$f(12) = \\log_{2} 16 + 1 = 5$$"
+        ],
+        "en": [
+          "The asymptote is $$x = -a$$, so $$a = 4$$.",
+          "$$f(0) = \\log_{2} 4 + b = 2 + b = 3$$ gives $$b = 1$$.",
+          "$$f(12) = \\log_{2} 16 + 1 = 5$$."
+        ]
+      }
+    },
+    {
+      "id": "a02",
+      "unit": "algebra",
+      "level": "exam",
+      "points": 3,
+      "prompt": {
+        "ko": "$$0 \\le x < 2\\pi$$일 때, 방정식 $$2\\sin^{2} x - 3\\sin x + 1 = 0$$의 모든 해의 합은 $$\\frac{q}{p}\\pi$$이다. $$p + q$$의 값은? (단, $$p$$와 $$q$$는 서로소인 자연수이다.)",
+        "en": "For $$0 \\le x < 2\\pi$$, the solutions of $$2\\sin^{2} x - 3\\sin x + 1 = 0$$ add up to $$\\frac{q}{p}\\pi$$. Write it as $$\\frac{q}{p}$$ with coprime natural numbers $$p$$ and $$q$$, and give $$p + q$$."
+      },
+      "answer": 5,
+      "solution": {
+        "ko": [
+          "$$(2\\sin x - 1)(\\sin x - 1) = 0$$이므로 $$\\sin x = \\frac{1}{2}$$ 또는 $$\\sin x = 1$$",
+          "해는 $$\\frac{\\pi}{6}, \\frac{5}{6}\\pi, \\frac{\\pi}{2}$$이고 합은 $$\\frac{3}{2}\\pi$$",
+          "$$p + q = 2 + 3 = 5$$"
+        ],
+        "en": [
+          "$$(2\\sin x - 1)(\\sin x - 1) = 0$$, so $$\\sin x = \\frac{1}{2}$$ or $$\\sin x = 1$$.",
+          "The solutions are $$\\frac{\\pi}{6}, \\frac{5}{6}\\pi, \\frac{\\pi}{2}$$, adding up to $$\\frac{3}{2}\\pi$$.",
+          "$$p + q = 2 + 3 = 5$$."
+        ]
+      }
+    },
+    {
+      "id": "a03",
+      "unit": "algebra",
+      "level": "exam",
+      "points": 4,
+      "prompt": {
+        "ko": "공차가 양수인 등차수열 $$\\{a_{n}\\}$$이 $$a_{3} + a_{7} = 20$$, $$a_{2}a_{8} = 64$$를 만족시킬 때, $$\\sum_{k=1}^{10} a_{k}$$의 값은?",
+        "en": "An arithmetic sequence with positive common difference has $$a_{3} + a_{7} = 20$$ and $$a_{2}a_{8} = 64$$. Find $$\\sum_{k=1}^{10} a_{k}$$."
+      },
+      "answer": 110,
+      "solution": {
+        "ko": [
+          "$$a_{3} + a_{7} = 2a_{5} = 20$$이므로 $$a_{5} = 10$$",
+          "공차를 $$d$$라 하면 $$a_{2}a_{8} = (10 - 3d)(10 + 3d) = 100 - 9d^{2} = 64$$, $$d = 2$$",
+          "$$a_{1} = 2$$이므로 $$\\sum_{k=1}^{10} a_{k} = \\frac{10(2 + 20)}{2} = 110$$"
+        ],
+        "en": [
+          "$$a_{3} + a_{7} = 2a_{5} = 20$$, so $$a_{5} = 10$$.",
+          "With difference $$d$$: $$a_{2}a_{8} = (10 - 3d)(10 + 3d) = 100 - 9d^{2} = 64$$, so $$d = 2$$.",
+          "$$a_{1} = 2$$, and the sum is $$\\frac{10(2 + 20)}{2} = 110$$."
+        ]
+      }
+    },
+    {
+      "id": "a04",
+      "unit": "algebra",
+      "level": "exam",
+      "points": 4,
+      "prompt": {
+        "ko": "수열 $$\\{a_{n}\\}$$은 $$a_{1} = 1$$이고, 모든 자연수 $$n$$에 대하여 $$a_{n+1} = \\begin{cases} a_{n} + 2 & (n\\text{이 홀수인 경우}) \\\\ 2a_{n} & (n\\text{이 짝수인 경우}) \\end{cases}$$를 만족시킨다. $$a_{8}$$의 값은?",
+        "en": "A sequence has $$a_{1} = 1$$ and $$a_{n+1} = a_{n} + 2$$ when $$n$$ is odd, $$a_{n+1} = 2a_{n}$$ when $$n$$ is even. Find $$a_{8}$$."
+      },
+      "answer": 38,
+      "solution": {
+        "ko": [
+          "$$a_{2} = 3$$, $$a_{3} = 6$$, $$a_{4} = 8$$, $$a_{5} = 16$$",
+          "$$a_{6} = 18$$, $$a_{7} = 36$$, $$a_{8} = 38$$"
+        ],
+        "en": [
+          "$$a_{2} = 3$$, $$a_{3} = 6$$, $$a_{4} = 8$$, $$a_{5} = 16$$.",
+          "$$a_{6} = 18$$, $$a_{7} = 36$$, $$a_{8} = 38$$."
+        ]
+      }
+    },
+    {
+      "id": "a05",
+      "unit": "algebra",
+      "level": "exam",
+      "points": 3,
+      "prompt": {
+        "ko": "$$\\overline{\\mathrm{AB}} = 5$$, $$\\overline{\\mathrm{AC}} = 8$$, $$\\angle \\mathrm{BAC} = \\frac{\\pi}{3}$$인 삼각형 $$\\mathrm{ABC}$$의 넓이를 $$S$$라 할 때, $$S^{2}$$의 값은?",
+        "en": "Triangle $$\\mathrm{ABC}$$ has $$\\overline{\\mathrm{AB}} = 5$$, $$\\overline{\\mathrm{AC}} = 8$$ and $$\\angle \\mathrm{BAC} = \\frac{\\pi}{3}$$. Its area is $$S$$. Find $$S^{2}$$."
+      },
+      "answer": 300,
+      "solution": {
+        "ko": [
+          "$$S = \\frac{1}{2} \\times 5 \\times 8 \\times \\sin\\frac{\\pi}{3} = 10\\sqrt{3}$$",
+          "$$S^{2} = 300$$"
+        ],
+        "en": [
+          "$$S = \\frac{1}{2} \\times 5 \\times 8 \\times \\sin\\frac{\\pi}{3} = 10\\sqrt{3}$$.",
+          "$$S^{2} = 300$$."
+        ]
+      }
+    },
+    {
+      "id": "a06",
+      "unit": "algebra",
+      "level": "exam",
+      "points": 4,
+      "prompt": {
+        "ko": "함수 $$f(x) = a\\sin bx + c$$의 최댓값이 $$7$$, 최솟값이 $$-1$$이고 주기가 $$\\pi$$일 때, $$f\\left(\\frac{\\pi}{12}\\right)$$의 값은? (단, $$a, b$$는 양수이다.)",
+        "en": "$$f(x) = a\\sin bx + c$$ with $$a, b > 0$$ has maximum $$7$$, minimum $$-1$$ and period $$\\pi$$. Find $$f\\left(\\frac{\\pi}{12}\\right)$$."
+      },
+      "answer": 5,
+      "solution": {
+        "ko": [
+          "$$a + c = 7$$, $$-a + c = -1$$에서 $$a = 4$$, $$c = 3$$",
+          "주기 $$\\frac{2\\pi}{b} = \\pi$$에서 $$b = 2$$",
+          "$$f\\left(\\frac{\\pi}{12}\\right) = 4\\sin\\frac{\\pi}{6} + 3 = 5$$"
+        ],
+        "en": [
+          "$$a + c = 7$$ and $$-a + c = -1$$ give $$a = 4$$, $$c = 3$$.",
+          "The period $$\\frac{2\\pi}{b} = \\pi$$ gives $$b = 2$$.",
+          "$$f\\left(\\frac{\\pi}{12}\\right) = 4\\sin\\frac{\\pi}{6} + 3 = 5$$."
+        ]
+      }
+    },
+    {
+      "id": "a07",
+      "unit": "algebra",
+      "level": "exam",
+      "points": 4,
+      "prompt": {
+        "ko": "$$2$$ 이상의 자연수 $$n$$에 대하여 $$\\log_{n} 64$$의 값이 자연수가 되도록 하는 모든 $$n$$의 값의 합은?",
+        "en": "Find the sum of all natural numbers $$n \\ge 2$$ for which $$\\log_{n} 64$$ is a natural number."
+      },
+      "answer": 78,
+      "solution": {
+        "ko": [
+          "$$\\log_{n} 64 = k$$ (자연수)이면 $$n^{k} = 64 = 2^{6}$$",
+          "$$k$$는 $$6$$의 약수이므로 $$n = 64, 8, 4, 2$$",
+          "합은 $$78$$"
+        ],
+        "en": [
+          "$$\\log_{n} 64 = k$$ means $$n^{k} = 64 = 2^{6}$$.",
+          "$$k$$ divides $$6$$, so $$n = 64, 8, 4, 2$$.",
+          "Their sum is $$78$$."
+        ]
+      }
+    },
+    {
+      "id": "c01",
+      "unit": "calculus",
+      "level": "exam",
+      "points": 3,
+      "prompt": {
+        "ko": "이차함수 $$f(x) = x^{2} + ax + b$$가 $$\\lim_{x \\to 2} \\frac{f(x)}{x - 2} = 3$$을 만족시킬 때, $$f(5)$$의 값은? (단, $$a, b$$는 상수이다.)",
+        "en": "$$f(x) = x^{2} + ax + b$$ satisfies $$\\lim_{x \\to 2} \\frac{f(x)}{x - 2} = 3$$. Find $$f(5)$$."
+      },
+      "answer": 18,
+      "solution": {
+        "ko": [
+          "극한값이 존재하므로 $$f(2) = 4 + 2a + b = 0$$",
+          "$$\\lim_{x \\to 2} \\frac{f(x) - f(2)}{x - 2} = f'(2) = 4 + a = 3$$에서 $$a = -1$$, $$b = -2$$",
+          "$$f(5) = 25 - 5 - 2 = 18$$"
+        ],
+        "en": [
+          "For the limit to exist, $$f(2) = 4 + 2a + b = 0$$.",
+          "Then the limit is $$f'(2) = 4 + a = 3$$, so $$a = -1$$ and $$b = -2$$.",
+          "$$f(5) = 25 - 5 - 2 = 18$$."
+        ]
+      }
+    },
+    {
+      "id": "c02",
+      "unit": "calculus",
+      "level": "exam",
+      "points": 4,
+      "prompt": {
+        "ko": "삼차함수 $$f(x) = x^{3} + ax^{2} + bx$$가 $$x = 1$$에서 극솟값 $$-5$$를 가질 때, 함수 $$f(x)$$의 극댓값은? (단, $$a, b$$는 상수이다.)",
+        "en": "$$f(x) = x^{3} + ax^{2} + bx$$ has a local minimum $$-5$$ at $$x = 1$$. Find its local maximum value."
+      },
+      "answer": 27,
+      "solution": {
+        "ko": [
+          "$$f'(1) = 3 + 2a + b = 0$$, $$f(1) = 1 + a + b = -5$$에서 $$a = 3$$, $$b = -9$$",
+          "$$f'(x) = 3x^{2} + 6x - 9 = 3(x + 3)(x - 1)$$",
+          "극댓값은 $$f(-3) = -27 + 27 + 27 = 27$$"
+        ],
+        "en": [
+          "$$f'(1) = 3 + 2a + b = 0$$ and $$f(1) = 1 + a + b = -5$$ give $$a = 3$$, $$b = -9$$.",
+          "$$f'(x) = 3x^{2} + 6x - 9 = 3(x + 3)(x - 1)$$.",
+          "The local maximum is $$f(-3) = -27 + 27 + 27 = 27$$."
+        ]
+      }
+    },
+    {
+      "id": "c03",
+      "unit": "calculus",
+      "level": "exam",
+      "points": 3,
+      "prompt": {
+        "ko": "곡선 $$y = x^{2} - 2x$$와 직선 $$y = x$$로 둘러싸인 부분의 넓이는 $$\\frac{q}{p}$$이다. $$p + q$$의 값은? (단, $$p$$와 $$q$$는 서로소인 자연수이다.)",
+        "en": "The region between $$y = x^{2} - 2x$$ and $$y = x$$ has area $$\\frac{q}{p}$$. Write it as $$\\frac{q}{p}$$ with coprime natural numbers $$p$$ and $$q$$, and give $$p + q$$."
+      },
+      "answer": 11,
+      "solution": {
+        "ko": [
+          "$$x^{2} - 2x = x$$에서 $$x = 0$$ 또는 $$x = 3$$",
+          "넓이는 $$\\int_{0}^{3} (3x - x^{2})\\,dx = \\frac{27}{2} - 9 = \\frac{9}{2}$$",
+          "$$p + q = 11$$"
+        ],
+        "en": [
+          "They meet where $$x^{2} - 2x = x$$: $$x = 0$$ and $$x = 3$$.",
+          "Area $$\\int_{0}^{3} (3x - x^{2})\\,dx = \\frac{27}{2} - 9 = \\frac{9}{2}$$.",
+          "$$p + q = 11$$."
+        ]
+      }
+    },
+    {
+      "id": "c04",
+      "unit": "calculus",
+      "level": "exam",
+      "points": 4,
+      "prompt": {
+        "ko": "수직선 위를 움직이는 점 $$\\mathrm{P}$$의 시각 $$t$$ $$(t \\ge 0)$$에서의 속도가 $$v(t) = 3t^{2} - 12t + 9$$이다. 시각 $$t = 0$$에서 $$t = 4$$까지 점 $$\\mathrm{P}$$가 움직인 거리는?",
+        "en": "A point moves on a line with velocity $$v(t) = 3t^{2} - 12t + 9$$. Find the distance it travels from $$t = 0$$ to $$t = 4$$."
+      },
+      "answer": 12,
+      "solution": {
+        "ko": [
+          "$$v(t) = 3(t - 1)(t - 3)$$이므로 $$1 < t < 3$$에서 $$v(t) < 0$$",
+          "$$\\int_{0}^{1} v\\,dt = 4$$, $$\\int_{1}^{3} v\\,dt = -4$$, $$\\int_{3}^{4} v\\,dt = 4$$",
+          "움직인 거리는 $$4 + 4 + 4 = 12$$"
+        ],
+        "en": [
+          "$$v(t) = 3(t - 1)(t - 3)$$ is negative for $$1 < t < 3$$.",
+          "$$\\int_{0}^{1} v\\,dt = 4$$, $$\\int_{1}^{3} v\\,dt = -4$$, $$\\int_{3}^{4} v\\,dt = 4$$.",
+          "The distance is $$4 + 4 + 4 = 12$$."
+        ]
+      }
+    },
+    {
+      "id": "c05",
+      "unit": "calculus",
+      "level": "exam",
+      "points": 4,
+      "prompt": {
+        "ko": "함수 $$f(x) = \\begin{cases} x^{2} + ax + 3 & (x < 1) \\\\ 4x + b & (x \\ge 1) \\end{cases}$$가 실수 전체의 집합에서 미분가능할 때, $$f(3)$$의 값은? (단, $$a, b$$는 상수이다.)",
+        "en": "$$f(x) = x^{2} + ax + 3$$ for $$x < 1$$ and $$4x + b$$ for $$x \\ge 1$$ is differentiable everywhere. Find $$f(3)$$."
+      },
+      "answer": 14,
+      "solution": {
+        "ko": [
+          "$$x = 1$$에서 미분계수가 같아야 하므로 $$2 + a = 4$$, $$a = 2$$",
+          "$$x = 1$$에서 연속이므로 $$1 + 2 + 3 = 4 + b$$, $$b = 2$$",
+          "$$f(3) = 12 + 2 = 14$$"
+        ],
+        "en": [
+          "The slopes agree at $$x = 1$$: $$2 + a = 4$$, so $$a = 2$$.",
+          "Continuity at $$x = 1$$: $$1 + 2 + 3 = 4 + b$$, so $$b = 2$$.",
+          "$$f(3) = 12 + 2 = 14$$."
+        ]
+      }
+    },
+    {
+      "id": "c06",
+      "unit": "calculus",
+      "level": "exam",
+      "points": 4,
+      "prompt": {
+        "ko": "함수 $$f(x) = \\int_{0}^{x} (t^{2} - 4t + 3)\\,dt$$의 극댓값은 $$\\frac{q}{p}$$이다. $$p + q$$의 값은? (단, $$p$$와 $$q$$는 서로소인 자연수이다.)",
+        "en": "The local maximum of $$f(x) = \\int_{0}^{x} (t^{2} - 4t + 3)\\,dt$$ is $$\\frac{q}{p}$$. Write it as $$\\frac{q}{p}$$ with coprime natural numbers $$p$$ and $$q$$, and give $$p + q$$."
+      },
+      "answer": 7,
+      "solution": {
+        "ko": [
+          "$$f'(x) = x^{2} - 4x + 3 = (x - 1)(x - 3)$$이므로 $$x = 1$$에서 극대",
+          "$$f(1) = \\frac{1}{3} - 2 + 3 = \\frac{4}{3}$$",
+          "$$p + q = 7$$"
+        ],
+        "en": [
+          "$$f'(x) = x^{2} - 4x + 3 = (x - 1)(x - 3)$$: a local maximum at $$x = 1$$.",
+          "$$f(1) = \\frac{1}{3} - 2 + 3 = \\frac{4}{3}$$.",
+          "$$p + q = 7$$."
+        ]
+      }
+    },
+    {
+      "id": "c07",
+      "unit": "calculus",
+      "level": "exam",
+      "points": 3,
+      "prompt": {
+        "ko": "$$\\lim_{x \\to \\infty} \\left(\\sqrt{x^{2} + 6x} - x\\right)$$의 값은?",
+        "en": "Find $$\\lim_{x \\to \\infty} \\left(\\sqrt{x^{2} + 6x} - x\\right)$$."
+      },
+      "answer": 3,
+      "solution": {
+        "ko": [
+          "분자를 유리화하면 $$\\frac{6x}{\\sqrt{x^{2} + 6x} + x}$$",
+          "분모, 분자를 $$x$$로 나누면 $$\\frac{6}{1 + 1} = 3$$"
+        ],
+        "en": [
+          "Multiply by the conjugate: $$\\frac{6x}{\\sqrt{x^{2} + 6x} + x}$$.",
+          "Divide by $$x$$: $$\\frac{6}{1 + 1} = 3$$."
+        ]
+      }
+    },
+    {
+      "id": "d01",
+      "unit": "calc2",
+      "level": "exam",
+      "points": 3,
+      "prompt": {
+        "ko": "$$\\lim_{n \\to \\infty} \\sum_{k=1}^{n} \\frac{2}{n}\\left(1 + \\frac{2k}{n}\\right)^{2}$$의 값은 $$\\frac{q}{p}$$이다. $$p + q$$의 값은? (단, $$p$$와 $$q$$는 서로소인 자연수이다.)",
+        "en": "$$\\lim_{n \\to \\infty} \\sum_{k=1}^{n} \\frac{2}{n}\\left(1 + \\frac{2k}{n}\\right)^{2} = \\frac{q}{p}$$. Write it as $$\\frac{q}{p}$$ with coprime natural numbers $$p$$ and $$q$$, and give $$p + q$$."
+      },
+      "answer": 29,
+      "solution": {
+        "ko": [
+          "정적분의 정의에 의하여 $$\\int_{1}^{3} x^{2}\\,dx$$",
+          "$$\\left[\\frac{x^{3}}{3}\\right]_{1}^{3} = 9 - \\frac{1}{3} = \\frac{26}{3}$$",
+          "$$p + q = 29$$"
+        ],
+        "en": [
+          "By the definition of the definite integral this is $$\\int_{1}^{3} x^{2}\\,dx$$.",
+          "$$\\left[\\frac{x^{3}}{3}\\right]_{1}^{3} = 9 - \\frac{1}{3} = \\frac{26}{3}$$.",
+          "$$p + q = 29$$."
+        ]
+      }
+    },
+    {
+      "id": "d02",
+      "unit": "calc2",
+      "level": "exam",
+      "points": 3,
+      "prompt": {
+        "ko": "$$\\int_{0}^{\\ln 3} e^{x}(e^{x} + 1)\\,dx$$의 값은?",
+        "en": "Find $$\\int_{0}^{\\ln 3} e^{x}(e^{x} + 1)\\,dx$$."
+      },
+      "answer": 6,
+      "solution": {
+        "ko": [
+          "$$e^{x} = u$$로 치환하면 $$du = e^{x}dx$$, $$u$$는 $$1$$에서 $$3$$까지",
+          "$$\\int_{1}^{3} (u + 1)\\,du = \\left[\\frac{u^{2}}{2} + u\\right]_{1}^{3} = 6$$"
+        ],
+        "en": [
+          "Let $$u = e^{x}$$: $$du = e^{x}dx$$, and $$u$$ runs from $$1$$ to $$3$$.",
+          "$$\\int_{1}^{3} (u + 1)\\,du = \\left[\\frac{u^{2}}{2} + u\\right]_{1}^{3} = 6$$."
+        ]
+      }
+    },
+    {
+      "id": "d03",
+      "unit": "calc2",
+      "level": "exam",
+      "points": 4,
+      "prompt": {
+        "ko": "매개변수 $$t$$로 나타내어진 곡선 $$x = t^{2}$$, $$y = \\frac{2}{3}t^{3}$$의 $$0 \\le t \\le \\sqrt{3}$$인 부분의 길이는 $$\\frac{q}{p}$$이다. $$p + q$$의 값은? (단, $$p$$와 $$q$$는 서로소인 자연수이다.)",
+        "en": "The curve $$x = t^{2}$$, $$y = \\frac{2}{3}t^{3}$$ for $$0 \\le t \\le \\sqrt{3}$$ has length $$\\frac{q}{p}$$. Write it as $$\\frac{q}{p}$$ with coprime natural numbers $$p$$ and $$q$$, and give $$p + q$$."
+      },
+      "answer": 17,
+      "solution": {
+        "ko": [
+          "$$\\frac{dx}{dt} = 2t$$, $$\\frac{dy}{dt} = 2t^{2}$$이므로 $$\\sqrt{4t^{2} + 4t^{4}} = 2t\\sqrt{1 + t^{2}}$$",
+          "$$\\int_{0}^{\\sqrt{3}} 2t\\sqrt{1 + t^{2}}\\,dt = \\left[\\frac{2}{3}(1 + t^{2})^{\\frac{3}{2}}\\right]_{0}^{\\sqrt{3}} = \\frac{14}{3}$$",
+          "$$p + q = 17$$"
+        ],
+        "en": [
+          "$$\\frac{dx}{dt} = 2t$$, $$\\frac{dy}{dt} = 2t^{2}$$, so the speed is $$2t\\sqrt{1 + t^{2}}$$.",
+          "$$\\int_{0}^{\\sqrt{3}} 2t\\sqrt{1 + t^{2}}\\,dt = \\left[\\frac{2}{3}(1 + t^{2})^{\\frac{3}{2}}\\right]_{0}^{\\sqrt{3}} = \\frac{14}{3}$$.",
+          "$$p + q = 17$$."
+        ]
+      }
+    },
+    {
+      "id": "d04",
+      "unit": "calc2",
+      "level": "exam",
+      "points": 3,
+      "prompt": {
+        "ko": "함수 $$f(x) = x^{3} + x + 1$$의 역함수를 $$g(x)$$라 할 때, $$g'(11) = \\frac{q}{p}$$이다. $$p + q$$의 값은? (단, $$p$$와 $$q$$는 서로소인 자연수이다.)",
+        "en": "$$g$$ is the inverse of $$f(x) = x^{3} + x + 1$$, and $$g'(11) = \\frac{q}{p}$$. Write it as $$\\frac{q}{p}$$ with coprime natural numbers $$p$$ and $$q$$, and give $$p + q$$."
+      },
+      "answer": 14,
+      "solution": {
+        "ko": [
+          "$$f(2) = 11$$이므로 $$g(11) = 2$$",
+          "$$g'(11) = \\frac{1}{f'(2)} = \\frac{1}{13}$$",
+          "$$p + q = 14$$"
+        ],
+        "en": [
+          "$$f(2) = 11$$, so $$g(11) = 2$$.",
+          "$$g'(11) = \\frac{1}{f'(2)} = \\frac{1}{13}$$.",
+          "$$p + q = 14$$."
+        ]
+      }
+    },
+    {
+      "id": "d05",
+      "unit": "calc2",
+      "level": "exam",
+      "points": 4,
+      "prompt": {
+        "ko": "급수 $$\\sum_{n=1}^{\\infty} \\left(\\frac{x - 1}{3}\\right)^{n}$$이 수렴하도록 하는 정수 $$x$$의 개수는?",
+        "en": "For how many integers $$x$$ does $$\\sum_{n=1}^{\\infty} \\left(\\frac{x - 1}{3}\\right)^{n}$$ converge?"
+      },
+      "answer": 5,
+      "solution": {
+        "ko": [
+          "등비급수가 수렴하려면 $$-1 < \\frac{x - 1}{3} < 1$$",
+          "$$-2 < x < 4$$이므로 정수 $$x$$는 $$-1, 0, 1, 2, 3$$의 $$5$$개"
+        ],
+        "en": [
+          "A geometric series converges when $$-1 < \\frac{x - 1}{3} < 1$$.",
+          "So $$-2 < x < 4$$: the integers $$-1, 0, 1, 2, 3$$, five of them."
+        ]
+      }
+    },
+    {
+      "id": "d06",
+      "unit": "calc2",
+      "level": "exam",
+      "points": 3,
+      "prompt": {
+        "ko": "$$\\lim_{x \\to 0} \\frac{1 - \\cos 2x}{x\\sin x}$$의 값은?",
+        "en": "Find $$\\lim_{x \\to 0} \\frac{1 - \\cos 2x}{x\\sin x}$$."
+      },
+      "answer": 2,
+      "solution": {
+        "ko": [
+          "$$1 - \\cos 2x = 2\\sin^{2} x$$이므로 $$\\frac{2\\sin^{2} x}{x\\sin x} = \\frac{2\\sin x}{x}$$",
+          "극한값은 $$2$$"
+        ],
+        "en": [
+          "$$1 - \\cos 2x = 2\\sin^{2} x$$, so the fraction is $$\\frac{2\\sin x}{x}$$.",
+          "The limit is $$2$$."
+        ]
+      }
+    },
+    {
+      "id": "s01",
+      "unit": "stats",
+      "level": "exam",
+      "points": 3,
+      "prompt": {
+        "ko": "남학생 $$3$$명과 여학생 $$2$$명이 일렬로 설 때, 여학생끼리 서로 이웃하지 않도록 서는 경우의 수는?",
+        "en": "Three boys and two girls stand in a row. In how many ways can they stand so that the two girls are not next to each other?"
+      },
+      "answer": 72,
+      "solution": {
+        "ko": [
+          "남학생 $$3$$명을 세우는 경우의 수는 $$3! = 6$$",
+          "남학생 사이사이와 양 끝 $$4$$곳 중 $$2$$곳에 여학생을 세우는 경우의 수는 $${}_{4}\\mathrm{P}_{2} = 12$$",
+          "$$6 \\times 12 = 72$$"
+        ],
+        "en": [
+          "The boys stand in $$3! = 6$$ ways.",
+          "The girls take two of the four gaps: $${}_{4}\\mathrm{P}_{2} = 12$$ ways.",
+          "$$6 \\times 12 = 72$$."
+        ]
+      }
+    },
+    {
+      "id": "s02",
+      "unit": "stats",
+      "level": "exam",
+      "points": 3,
+      "prompt": {
+        "ko": "$$\\mathrm{A}, \\mathrm{B}$$를 포함한 $$6$$명이 원형의 탁자에 일정한 간격으로 둘러앉을 때, $$\\mathrm{A}$$와 $$\\mathrm{B}$$가 서로 이웃하여 앉는 경우의 수는? (단, 회전하여 일치하는 것은 같은 것으로 본다.)",
+        "en": "Six people, $$\\mathrm{A}$$ and $$\\mathrm{B}$$ among them, sit evenly around a round table (rotations count as the same). In how many ways do $$\\mathrm{A}$$ and $$\\mathrm{B}$$ sit side by side?"
+      },
+      "answer": 48,
+      "solution": {
+        "ko": [
+          "$$\\mathrm{A}, \\mathrm{B}$$를 한 사람으로 보면 $$5$$명의 원순열 $$(5 - 1)! = 24$$",
+          "$$\\mathrm{A}, \\mathrm{B}$$가 자리를 바꾸는 $$2$$가지를 곱하면 $$48$$"
+        ],
+        "en": [
+          "Treat $$\\mathrm{A}, \\mathrm{B}$$ as one: $$(5 - 1)! = 24$$ circular arrangements.",
+          "Times $$2$$ for their order: $$48$$."
+        ]
+      }
+    },
+    {
+      "id": "s03",
+      "unit": "stats",
+      "level": "exam",
+      "points": 4,
+      "prompt": {
+        "ko": "흰 공 $$3$$개와 검은 공 $$4$$개가 들어 있는 주머니에서 임의로 $$3$$개의 공을 동시에 꺼낼 때, 꺼낸 흰 공의 개수를 확률변수 $$X$$라 하자. $$\\mathrm{E}(X) = \\frac{q}{p}$$일 때, $$p + q$$의 값은? (단, $$p$$와 $$q$$는 서로소인 자연수이다.)",
+        "en": "A bag holds $$3$$ white and $$4$$ black balls. Three are drawn at once; $$X$$ is the number of white ones, and $$\\mathrm{E}(X) = \\frac{q}{p}$$. Write it as $$\\frac{q}{p}$$ with coprime natural numbers $$p$$ and $$q$$, and give $$p + q$$."
+      },
+      "answer": 16,
+      "solution": {
+        "ko": [
+          "$$\\mathrm{P}(X = k) = \\frac{{}_{3}\\mathrm{C}_{k} \\times {}_{4}\\mathrm{C}_{3-k}}{{}_{7}\\mathrm{C}_{3}}$$이므로 $$\\mathrm{P}(X = 0, 1, 2, 3) = \\frac{4}{35}, \\frac{18}{35}, \\frac{12}{35}, \\frac{1}{35}$$",
+          "$$\\mathrm{E}(X) = \\frac{18 + 24 + 3}{35} = \\frac{9}{7}$$",
+          "$$p + q = 16$$"
+        ],
+        "en": [
+          "$$\\mathrm{P}(X = k) = \\frac{{}_{3}\\mathrm{C}_{k} \\times {}_{4}\\mathrm{C}_{3-k}}{{}_{7}\\mathrm{C}_{3}}$$: $$\\frac{4}{35}, \\frac{18}{35}, \\frac{12}{35}, \\frac{1}{35}$$ for $$k = 0, 1, 2, 3$$.",
+          "$$\\mathrm{E}(X) = \\frac{18 + 24 + 3}{35} = \\frac{9}{7}$$.",
+          "$$p + q = 16$$."
+        ]
+      }
+    },
+    {
+      "id": "s04",
+      "unit": "stats",
+      "level": "exam",
+      "points": 4,
+      "prompt": {
+        "ko": "주머니 $$\\mathrm{A}$$에는 흰 공 $$2$$개와 검은 공 $$3$$개, 주머니 $$\\mathrm{B}$$에는 흰 공 $$4$$개와 검은 공 $$1$$개가 들어 있다. 한 개의 주사위를 던져 나온 눈의 수가 $$3$$의 배수이면 주머니 $$\\mathrm{A}$$에서, 그렇지 않으면 주머니 $$\\mathrm{B}$$에서 임의로 공 $$1$$개를 꺼낸다. 꺼낸 공이 흰 공일 때, 이 공이 주머니 $$\\mathrm{A}$$에서 꺼낸 공일 확률은 $$\\frac{q}{p}$$이다. $$p + q$$의 값은? (단, $$p$$와 $$q$$는 서로소인 자연수이다.)",
+        "en": "Bag $$\\mathrm{A}$$ has $$2$$ white and $$3$$ black balls, bag $$\\mathrm{B}$$ has $$4$$ white and $$1$$ black. A die is thrown: a multiple of $$3$$ means a ball is drawn from $$\\mathrm{A}$$, anything else from $$\\mathrm{B}$$. Given that the ball is white, the probability it came from $$\\mathrm{A}$$ is $$\\frac{q}{p}$$. Write it as $$\\frac{q}{p}$$ with coprime natural numbers $$p$$ and $$q$$, and give $$p + q$$."
+      },
+      "answer": 6,
+      "solution": {
+        "ko": [
+          "$$\\mathrm{A}$$에서 흰 공: $$\\frac{1}{3} \\times \\frac{2}{5} = \\frac{2}{15}$$, $$\\mathrm{B}$$에서 흰 공: $$\\frac{2}{3} \\times \\frac{4}{5} = \\frac{8}{15}$$",
+          "구하는 확률은 $$\\frac{2/15}{2/15 + 8/15} = \\frac{1}{5}$$",
+          "$$p + q = 6$$"
+        ],
+        "en": [
+          "White from $$\\mathrm{A}$$: $$\\frac{1}{3} \\times \\frac{2}{5} = \\frac{2}{15}$$; white from $$\\mathrm{B}$$: $$\\frac{2}{3} \\times \\frac{4}{5} = \\frac{8}{15}$$.",
+          "The probability is $$\\frac{2/15}{2/15 + 8/15} = \\frac{1}{5}$$.",
+          "$$p + q = 6$$."
+        ]
+      }
+    },
+    {
+      "id": "s05",
+      "unit": "stats",
+      "level": "exam",
+      "points": 3,
+      "prompt": {
+        "ko": "방정식 $$x + y + z = 10$$을 만족시키는 자연수 $$x, y, z$$의 순서쌍 $$(x, y, z)$$의 개수는?",
+        "en": "How many ordered triples of natural numbers $$(x, y, z)$$ satisfy $$x + y + z = 10$$?"
+      },
+      "answer": 36,
+      "solution": {
+        "ko": [
+          "$$x = x' + 1$$ 등으로 놓으면 $$x' + y' + z' = 7$$ (음이 아닌 정수)",
+          "$${}_{3}\\mathrm{H}_{7} = {}_{9}\\mathrm{C}_{7} = 36$$"
+        ],
+        "en": [
+          "Put $$x = x' + 1$$ and so on: $$x' + y' + z' = 7$$ in whole numbers.",
+          "$${}_{3}\\mathrm{H}_{7} = {}_{9}\\mathrm{C}_{7} = 36$$."
+        ]
+      }
+    },
+    {
+      "id": "g01",
+      "unit": "geometry",
+      "level": "exam",
+      "points": 3,
+      "prompt": {
+        "ko": "쌍곡선 $$\\frac{x^{2}}{a^{2}} - \\frac{y^{2}}{9} = 1$$의 점근선의 방정식이 $$y = \\pm\\frac{3}{4}x$$일 때, 이 쌍곡선의 두 초점 사이의 거리는? (단, $$a > 0$$)",
+        "en": "The hyperbola $$\\frac{x^{2}}{a^{2}} - \\frac{y^{2}}{9} = 1$$ ($$a > 0$$) has asymptotes $$y = \\pm\\frac{3}{4}x$$. Find the distance between its foci."
+      },
+      "answer": 10,
+      "solution": {
+        "ko": [
+          "점근선의 기울기 $$\\frac{3}{a} = \\frac{3}{4}$$에서 $$a = 4$$",
+          "$$c^{2} = 16 + 9 = 25$$, $$c = 5$$이므로 두 초점 사이의 거리는 $$10$$"
+        ],
+        "en": [
+          "The asymptote slope is $$\\frac{3}{a} = \\frac{3}{4}$$, so $$a = 4$$.",
+          "$$c^{2} = 16 + 9 = 25$$, $$c = 5$$: the foci are $$10$$ apart."
+        ]
+      }
+    },
+    {
+      "id": "g02",
+      "unit": "geometry",
+      "level": "exam",
+      "points": 4,
+      "prompt": {
+        "ko": "타원 $$\\frac{x^{2}}{25} + \\frac{y^{2}}{16} = 1$$의 두 초점을 $$\\mathrm{F}, \\mathrm{F}'$$이라 하자. 이 타원 위의 점 $$\\mathrm{P}$$에 대하여 $$\\angle \\mathrm{FPF}' = \\frac{\\pi}{2}$$일 때, 삼각형 $$\\mathrm{PFF}'$$의 넓이는?",
+        "en": "$$\\mathrm{F}, \\mathrm{F}'$$ are the foci of $$\\frac{x^{2}}{25} + \\frac{y^{2}}{16} = 1$$, and $$\\mathrm{P}$$ on it has $$\\angle \\mathrm{FPF}' = \\frac{\\pi}{2}$$. Find the area of triangle $$\\mathrm{PFF}'$$."
+      },
+      "answer": 16,
+      "solution": {
+        "ko": [
+          "$$\\overline{\\mathrm{PF}} + \\overline{\\mathrm{PF}'} = 10$$, $$c = 3$$이므로 $$\\overline{\\mathrm{PF}}^{2} + \\overline{\\mathrm{PF}'}^{2} = 6^{2} = 36$$",
+          "$$2\\,\\overline{\\mathrm{PF}} \\times \\overline{\\mathrm{PF}'} = 100 - 36 = 64$$",
+          "넓이는 $$\\frac{1}{2}\\,\\overline{\\mathrm{PF}} \\times \\overline{\\mathrm{PF}'} = 16$$"
+        ],
+        "en": [
+          "$$\\overline{\\mathrm{PF}} + \\overline{\\mathrm{PF}'} = 10$$ and $$c = 3$$, so $$\\overline{\\mathrm{PF}}^{2} + \\overline{\\mathrm{PF}'}^{2} = 6^{2} = 36$$.",
+          "$$2\\,\\overline{\\mathrm{PF}} \\times \\overline{\\mathrm{PF}'} = 100 - 36 = 64$$.",
+          "The area is $$\\frac{1}{2}\\,\\overline{\\mathrm{PF}} \\times \\overline{\\mathrm{PF}'} = 16$$."
+        ]
+      }
+    },
+    {
+      "id": "g03",
+      "unit": "geometry",
+      "level": "exam",
+      "points": 3,
+      "prompt": {
+        "ko": "두 벡터 $$\\vec{a}, \\vec{b}$$에 대하여 $$|\\vec{a}| = 2$$, $$|\\vec{b}| = 3$$이고 두 벡터가 이루는 각의 크기가 $$\\frac{\\pi}{3}$$일 때, $$|2\\vec{a} - \\vec{b}|^{2}$$의 값은?",
+        "en": "$$|\\vec{a}| = 2$$, $$|\\vec{b}| = 3$$ and the angle between them is $$\\frac{\\pi}{3}$$. Find $$|2\\vec{a} - \\vec{b}|^{2}$$."
+      },
+      "answer": 13,
+      "solution": {
+        "ko": [
+          "$$\\vec{a} \\cdot \\vec{b} = 2 \\times 3 \\times \\cos\\frac{\\pi}{3} = 3$$",
+          "$$|2\\vec{a} - \\vec{b}|^{2} = 4|\\vec{a}|^{2} - 4\\vec{a} \\cdot \\vec{b} + |\\vec{b}|^{2} = 16 - 12 + 9 = 13$$"
+        ],
+        "en": [
+          "$$\\vec{a} \\cdot \\vec{b} = 2 \\times 3 \\times \\cos\\frac{\\pi}{3} = 3$$.",
+          "$$|2\\vec{a} - \\vec{b}|^{2} = 4|\\vec{a}|^{2} - 4\\vec{a} \\cdot \\vec{b} + |\\vec{b}|^{2} = 16 - 12 + 9 = 13$$."
+        ]
+      }
+    },
+    {
+      "id": "g04",
+      "unit": "geometry",
+      "level": "exam",
+      "points": 3,
+      "prompt": {
+        "ko": "좌표공간의 두 점 $$\\mathrm{A}(1, 2, 3)$$, $$\\mathrm{B}(4, -1, 0)$$에 대하여 선분 $$\\mathrm{AB}$$를 $$2 : 1$$로 내분하는 점을 $$\\mathrm{P}$$라 할 때, $$\\overline{\\mathrm{OP}}^{2}$$의 값은? (단, $$\\mathrm{O}$$는 원점이다.)",
+        "en": "$$\\mathrm{P}$$ divides $$\\mathrm{A}(1, 2, 3)$$ to $$\\mathrm{B}(4, -1, 0)$$ internally in the ratio $$2 : 1$$. Find $$\\overline{\\mathrm{OP}}^{2}$$ ($$\\mathrm{O}$$ is the origin)."
+      },
+      "answer": 10,
+      "solution": {
+        "ko": [
+          "$$\\mathrm{P}\\left(\\frac{2 \\times 4 + 1}{3}, \\frac{2 \\times (-1) + 2}{3}, \\frac{2 \\times 0 + 3}{3}\\right) = (3, 0, 1)$$",
+          "$$\\overline{\\mathrm{OP}}^{2} = 9 + 0 + 1 = 10$$"
+        ],
+        "en": [
+          "$$\\mathrm{P}\\left(\\frac{2 \\times 4 + 1}{3}, \\frac{2 \\times (-1) + 2}{3}, \\frac{2 \\times 0 + 3}{3}\\right) = (3, 0, 1)$$.",
+          "$$\\overline{\\mathrm{OP}}^{2} = 9 + 0 + 1 = 10$$."
+        ]
+      }
+    },
+    {
+      "id": "g05",
+      "unit": "geometry",
+      "level": "exam",
+      "points": 3,
+      "prompt": {
+        "ko": "구 $$(x - 1)^{2} + (y + 2)^{2} + (z - 3)^{2} = 25$$와 $$xy$$평면이 만나서 생기는 원의 넓이가 $$k\\pi$$일 때, $$k$$의 값은?",
+        "en": "The sphere $$(x - 1)^{2} + (y + 2)^{2} + (z - 3)^{2} = 25$$ meets the xy-plane in a circle of area $$k\\pi$$. Find $$k$$."
+      },
+      "answer": 16,
+      "solution": {
+        "ko": [
+          "구의 중심 $$(1, -2, 3)$$에서 $$xy$$평면까지의 거리는 $$3$$",
+          "원의 반지름을 $$r$$라 하면 $$r^{2} = 25 - 9 = 16$$이므로 $$k = 16$$"
+        ],
+        "en": [
+          "The centre $$(1, -2, 3)$$ is $$3$$ from the xy-plane.",
+          "The circle has $$r^{2} = 25 - 9 = 16$$, so $$k = 16$$."
+        ]
+      }
+    }
+  ]
+}

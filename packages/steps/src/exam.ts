@@ -7,7 +7,7 @@
  * Text is written for the worksheet's rich text: $$…$$ is LaTeX.
  */
 
-export type Unit = 'algebra' | 'calculus' | 'calc2' | 'stats';
+export type Unit = 'algebra' | 'calculus' | 'calc2' | 'stats' | 'geometry';
 export type Rng = {
   int: (lo: number, hi: number) => number;
   nonzero: (lo: number, hi: number) => number;

@@ -3,12 +3,15 @@ import { add, call, div, id, mul, num, pow, tidy } from './ast';
 import { diffSteps } from './derivative';
 import { EXAM_TEMPLATES as BASE_EXAM, type Unit } from './exam';
 import { MORE_EXAM } from './exam2';
+import { ADVANCED_UNITS, BASIC_UNITS, GEOMETRY_EXAM } from './units';
 
-const EXAM_TEMPLATES = { ...BASE_EXAM, ...MORE_EXAM };
+const EXAM_TEMPLATES = { ...BASE_EXAM, ...MORE_EXAM, ...GEOMETRY_EXAM };
+/** every short-answer template: the exam ones and the basic and advanced ones by unit */
+const UNIT_TEMPLATES = { ...EXAM_TEMPLATES, ...BASIC_UNITS, ...ADVANCED_UNITS };
 import { solveSteps } from './equation';
 import { polyNode, Q, toPoly, type Poly } from './rational';
 
-/** derivative, equation and integral drill; algebra (수학Ⅰ) and calculus (수학Ⅱ) are the exam units */
+/** derivative, equation and integral drill, and the units: 수학Ⅰ, 수학Ⅱ, 미적분, 확률과 통계, 기하 */
 export type Topic = 'derivative' | 'equation' | 'integral' | Unit;
 /** basic drill, harder drill, and exam-style (평가원) problems */
 export type Level = 'basic' | 'advanced' | 'exam';
@@ -260,9 +263,9 @@ export const TEMPLATES: Record<string, Template> = {
     },
   },
 
-  // ---- exam-style (평가원): see exam.ts
+  // ---- short answer by unit (basic and advanced: units.ts; exam-style, 평가원: exam.ts, exam2.ts, units.ts)
   ...Object.fromEntries(
-    Object.entries(EXAM_TEMPLATES).map(([name, t]) => [
+    Object.entries(UNIT_TEMPLATES).map(([name, t]) => [
       name,
       {
         topic: t.unit,
@@ -275,21 +278,25 @@ export const TEMPLATES: Record<string, Template> = {
   ),
 };
 
-const examOf = (unit: Unit) => Object.entries(EXAM_TEMPLATES).filter(([, t]) => t.unit === unit).map(([name]) => name);
+const of = (set: Record<string, { unit: Unit }>, unit: Unit) => Object.entries(set).filter(([, t]) => t.unit === unit).map(([name]) => name);
+const UNITS: Unit[] = ['algebra', 'calculus', 'calc2', 'stats', 'geometry'];
+const byUnit = (set: Record<string, { unit: Unit }>) => Object.fromEntries(UNITS.map((u) => [u, of(set, u)])) as Record<Unit, string[]>;
 
-/** the templates for each level and topic */
+/** the templates for each level and topic: the units first, then (basic and advanced) the drills */
 export const LEVEL_TEMPLATES: Record<Level, Partial<Record<Topic, string[]>>> = {
   basic: {
+    ...byUnit(BASIC_UNITS),
     derivative: ['derivative-polynomial', 'derivative-product', 'derivative-chain', 'derivative-quotient'],
     equation: ['equation-linear', 'equation-quadratic'],
     integral: ['integral-polynomial', 'integral-basic'],
   },
   advanced: {
+    ...byUnit(ADVANCED_UNITS),
     derivative: ['derivative-exp-trig', 'derivative-power-of-trig', 'derivative-log-quotient', 'derivative-quotient'],
     equation: ['equation-cubic', 'equation-fraction-roots'],
     integral: ['integral-substitution', 'integral-parts'],
   },
-  exam: { algebra: examOf('algebra'), calculus: examOf('calculus'), calc2: examOf('calc2'), stats: examOf('stats') },
+  exam: byUnit(EXAM_TEMPLATES),
 };
 /** the basic templates, by topic */
 export const TOPIC_TEMPLATES = LEVEL_TEMPLATES.basic as Record<'derivative' | 'equation' | 'integral', string[]>;
@@ -420,7 +427,7 @@ export interface ExamItem extends Problem {
  * the elective (23–28 five-choice, 29–30 short answer), 100 points in all,
  * easiest first in each part. Short answers are natural numbers below 1000.
  */
-export function mockExam(elective: 'calc2' | 'stats', random = Math.random): ExamItem[] {
+export function mockExam(elective: 'calc2' | 'stats' | 'geometry', random = Math.random): ExamItem[] {
   const parts: { units: Unit[]; points: number[]; choice: boolean }[] = [
     { units: ['algebra', 'calculus'], points: [2, 2, 3, 3, 3, 3, 3, 3, 4, 4, 4, 4, 4, 4, 4], choice: true },
     { units: ['algebra', 'calculus'], points: [3, 3, 3, 3, 4, 4, 4], choice: false },

@@ -40,7 +40,7 @@ export function generateProblems(level: Level, topic: Topic, count: number, lang
 const CIRCLED = ['①', '②', '③', '④', '⑤'];
 
 /** A whole mock exam as worksheet problems: the choices under each five-choice problem, the answer key with its working. */
-export function mockSheet(elective: 'calc2' | 'stats', lang: Lang): Problem[] {
+export function mockSheet(elective: 'calc2' | 'stats' | 'geometry', lang: Lang): Problem[] {
   return mockExam(elective).map((item) => {
     const working = item.solution?.[lang] ?? [];
     const choices = item.choices?.map((v, k) => `${CIRCLED[k]} $$${v}$$`).join('  ');

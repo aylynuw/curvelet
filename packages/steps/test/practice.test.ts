@@ -18,8 +18,8 @@ describe('practice problems', () => {
     });
   }
 
-  it('exam problems: whole-number answers, 2 to 4 points, and working in both languages', () => {
-    for (const name of Object.keys(TEMPLATES).filter((n) => n.startsWith('exam-'))) {
+  it('short-answer problems (exam, and basic and advanced by unit): whole-number answers, 2 to 4 points, and working in both languages', () => {
+    for (const name of Object.keys(TEMPLATES).filter((n) => /^(exam|basic|adv)-/.test(n))) {
       for (let seed = 1; seed <= 200; seed++) {
         const p = makeProblem(name, seed);
         expect(Number.isInteger(p.value), `${name} ${seed}: ${p.value}`).toBe(true);
@@ -71,7 +71,7 @@ describe('practice problems', () => {
 
 describe('mock exam', () => {
   it('is laid out like the 수능: 30 problems, 100 points, five choices where due, natural short answers', () => {
-    for (const elective of ['calc2', 'stats'] as const) {
+    for (const elective of ['calc2', 'stats', 'geometry'] as const) {
       for (let k = 0; k < 20; k++) {
         const paper = mockExam(elective);
         expect(paper.length).toBe(30);

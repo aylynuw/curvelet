@@ -79,7 +79,7 @@ export function WorksheetView({
   const [genTopic, setGenTopic] = useState<Topic>('calculus');
   const [genCount, setGenCount] = useState(4);
   const generate = () => set({ problems: [...sheet.problems, ...generateProblems(genLevel, genTopic, genCount, lang, learn)] });
-  const [mockElective, setMockElective] = useState<'calc2' | 'stats'>('calc2');
+  const [mockElective, setMockElective] = useState<'calc2' | 'stats' | 'geometry'>('calc2');
   const makeMock = () => {
     if (sheet.problems.length > 0 && !window.confirm(s.mockReplace)) return;
     set({
@@ -236,9 +236,10 @@ export function WorksheetView({
             <p className="ws-mock__note">{s.mockNote}</p>
             <div className="ws-mock__row">
               <Field label={s.mockElective}>
-                <select className="input" value={mockElective} onChange={(e) => setMockElective(e.target.value as 'calc2' | 'stats')}>
+                <select className="input" value={mockElective} onChange={(e) => setMockElective(e.target.value as 'calc2' | 'stats' | 'geometry')}>
                   <option value="calc2">{learn.topics.calc2}</option>
                   <option value="stats">{learn.topics.stats}</option>
+                  <option value="geometry">{learn.topics.geometry}</option>
                 </select>
               </Field>
               <button type="button" className="btn btn--small btn--primary" onClick={makeMock}>

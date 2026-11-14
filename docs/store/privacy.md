@@ -28,6 +28,10 @@ Exact answers come from SymPy running inside the app (through Pyodide). The engi
 
 A few seconds after it starts, the desktop app asks GitHub whether a newer version is listed on Curvelet's releases page (github.com/aylynuw/curvelet/releases). The request carries nothing about you or your work; like any web request, GitHub sees your IP address. When an update is offered, it is only downloaded and installed if you choose to.
 
+## Problem sets
+
+The Study tab's "Get the latest set" downloads the exam-style problem set from Curvelet's repository on GitHub (raw.githubusercontent.com), only when you press it. Nothing about you or your work is sent.
+
 ## Children
 
 The app is suitable for all ages and collects no personal information from anyone, including children.
@@ -71,6 +75,10 @@ Questions about Curvelet go to aylyn@uwux.dev.
 ## 업데이트 (데스크톱 앱)
 
 데스크톱 앱은 실행하고 몇 초 뒤에 GitHub의 Curvelet 릴리스 페이지(github.com/aylynuw/curvelet/releases)에 새 버전이 있는지 확인합니다. 이 요청에는 사용자나 작업 내용에 관한 정보가 담기지 않으며, 다른 웹 요청과 마찬가지로 GitHub는 IP 주소를 알 수 있습니다. 업데이트는 사용자가 선택할 때에만 내려받아 설치합니다.
+
+## 문제집
+
+학습 탭의 "최신 문제집 받기"를 누를 때에만 GitHub의 Curvelet 저장소(raw.githubusercontent.com)에서 평가원 스타일 문제집을 내려받습니다. 사용자나 작업 내용에 관한 정보는 보내지 않습니다.
 
 ## 어린이
 

@@ -1,5 +1,6 @@
 import type { EvalSettings, SymbolicResolver } from '@math/engine';
-import { useState } from 'react';
+import { useEffect, useReducer, useRef, useState } from 'react';
+import { bankState, downloadBank, onBank, resetBank, setBankText } from '../learn/bank';
 import type { Lang } from '../i18n';
 import { Practice } from '../learn/Practice';
 import type { IntegralAsk } from '../learn/StepsView';
@@ -73,6 +74,7 @@ export function StudyTool({
             </button>
           ))}
         </div>
+        <BankControl learn={learn} lang={lang} onNotice={onNotice} />
       </div>
       {view === 'practice' ? (
         <div className="study__practice">
@@ -107,6 +109,64 @@ export function StudyTool({
           calculatorLines={calculatorLines}
         />
       )}
+    </div>
+  );
+}
+
+/** the problem set in use, and where to get another */
+function BankControl({ learn, lang, onNotice }: { learn: LearnStrings; lang: Lang; onNotice: (text: string) => void }) {
+  const [, redraw] = useReducer((n: number) => n + 1, 0);
+  useEffect(() => onBank(redraw), []);
+  const [busy, setBusy] = useState(false);
+  const fileRef = useRef<HTMLInputElement>(null);
+  const { bank, source } = bankState();
+  const done = (r: { count: number; skipped: number }) => onNotice(learn.bankLoaded(r.count, r.skipped));
+
+  const download = async () => {
+    setBusy(true);
+    try {
+      done(await downloadBank());
+    } catch {
+      onNotice(learn.bankFailed);
+    } finally {
+      setBusy(false);
+    }
+  };
+  const open = async (file: File | undefined) => {
+    if (!file) return;
+    try {
+      done(setBankText(await file.text(), 'file'));
+    } catch {
+      onNotice(learn.bankBadFile);
+    }
+  };
+
+  return (
+    <div className="study__bank" role="group" aria-label={bank.title[lang]}>
+      <span className="study__bank-name" title={learn.bankHint}>
+        {bank.title[lang]} <span className="num">{learn.bankCount(bank.problems.length)}</span>
+      </span>
+      <button type="button" className="btn btn--small btn--quiet" onClick={download} disabled={busy}>
+        {busy ? learn.bankLoading : learn.bankDownload}
+      </button>
+      <button type="button" className="btn btn--small btn--quiet" onClick={() => fileRef.current?.click()}>
+        {learn.bankFile}
+      </button>
+      {source !== 'bundled' && (
+        <button type="button" className="btn btn--small btn--quiet" onClick={() => done(resetBank())}>
+          {learn.bankReset}
+        </button>
+      )}
+      <input
+        ref={fileRef}
+        type="file"
+        accept=".json,application/json"
+        hidden
+        onChange={(e) => {
+          void open(e.target.files?.[0]);
+          e.target.value = '';
+        }}
+      />
     </div>
   );
 }
