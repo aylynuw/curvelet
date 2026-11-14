@@ -38,7 +38,7 @@ for (const [unit, ko, en, file] of UNITS) {
         const p = makeProblem(template, seed);
         if (!Number.isFinite(p.value) || seen.has(p.prompt.ko)) continue;
         seen.add(p.prompt.ko);
-        problems.push({ id: `${template}-${seed}`, unit, level, points: p.points, prompt: p.prompt, answer: p.value, solution: p.solution });
+        problems.push({ id: `${template}-${seed}`, unit, level, points: p.points, prompt: p.prompt, answer: p.value, solution: p.solution, ...(p.figure ? { figure: p.figure } : {}) });
         made++;
       }
     }
