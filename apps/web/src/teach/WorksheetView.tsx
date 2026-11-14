@@ -251,7 +251,7 @@ export function WorksheetView({
       </aside>
 
       <section className="ws-preview" ref={previewRef} aria-label={s.preview}>
-        <Pages sheet={sheet} s={s} settings={settings} resolver={resolver} version={version} zoom={zoom} />
+        <Pages sheet={sheet} s={s} settings={settings} resolver={resolver} version={version} zoom={zoom} lang={lang} />
       </section>
     </div>
   );

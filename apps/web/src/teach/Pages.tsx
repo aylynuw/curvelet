@@ -2,6 +2,8 @@ import type { EvalSettings, SymbolicResolver } from '@math/engine';
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import { FigureView, RichText } from './FigureView';
 import type { TeachStrings } from './strings';
+import type { Lang } from '../i18n';
+import { sourceText } from '../learn/source';
 import { MARGIN, PAPER, PX_PER_MM, paginate, type Page, type Worksheet } from './worksheet';
 
 const GAP_MM = 8;
@@ -22,6 +24,7 @@ export function Pages({
   resolver,
   version,
   zoom,
+  lang,
 }: {
   sheet: Worksheet;
   s: TeachStrings;
@@ -29,6 +32,7 @@ export function Pages({
   resolver?: SymbolicResolver;
   version: number;
   zoom: number;
+  lang: Lang;
 }) {
   const paper = PAPER[sheet.paper];
   const px = (mm: number) => mm * PX_PER_MM;
@@ -90,6 +94,7 @@ export function Pages({
                 <>
                   <RichText text={body} />
                   {p.points > 0 && <span className="ws-points"> {s.pointsMark(p.points)}</span>}
+                  {p.source && <span className="ws-points ws-source"> {sourceText(p.source, lang)}</span>}
                   {choices && (
                     <span className="ws-choices">
                       {choices.split(/\s{2,}|\u2003+/u).filter(Boolean).map((c, j) => (

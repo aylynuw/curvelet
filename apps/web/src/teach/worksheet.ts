@@ -36,6 +36,8 @@ export interface Problem {
   /** blank lines left for working */
   space: number;
   figure: Figure | null;
+  /** a 평가원 problem: year, month and number, YYYYMMNN */
+  source?: string;
 }
 
 export interface Worksheet {

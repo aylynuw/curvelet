@@ -14,6 +14,7 @@ export function toSheetProblem(p: Drill, lang: Lang, learn: LearnStrings): Probl
       answer: [String(p.value), ...working].join('\n'),
       points: p.points ?? 0,
       space: (p.points ?? 3) + 3,
+      ...(p.source ? { source: p.source } : {}),
     };
   }
   return {

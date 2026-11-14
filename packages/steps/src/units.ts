@@ -1,6 +1,6 @@
 /**
- * Problems by unit for the basic and advanced levels: 수학Ⅰ (algebra),
- * 수학Ⅱ (calculus), 미적분 (calc2), 확률과 통계 (stats) and 기하
+ * Problems by unit for the basic and advanced levels: 대수 (algebra),
+ * 미적분Ⅰ (calculus), 미적분Ⅱ (calc2), 확률과 통계 (stats) and 기하
  * (geometry). Like the exam problems they have one number for an answer
  * and the working in both languages, but each asks for one idea (basic)
  * or two put together (advanced). GEOMETRY_EXAM adds 기하 to the

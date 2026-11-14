@@ -14,6 +14,8 @@ export interface BankProblem {
   prompt: { ko: string; en: string };
   answer: number;
   solution: { ko: string[]; en: string[] };
+  /** a 평가원 problem: year, month and number, as YYYYMMNN (20261103) */
+  source?: string;
 }
 
 export interface Bank {
@@ -42,7 +44,8 @@ export function parseBank(data: unknown): { bank: Bank; skipped: string[] } {
   d.problems.forEach((raw: unknown, k: number) => {
     const p = raw as Partial<BankProblem> & { level?: unknown };
     const id = typeof p?.id === 'string' ? p.id : `#${k + 1}`;
-    const level = (p.level ?? 'exam') as Level;
+    // the level follows the points unless the set says otherwise
+    const level = (p.level ?? (p.points === 2 ? 'basic' : p.points === 3 ? 'advanced' : 'exam')) as Level;
     const ok =
       typeof p === 'object' &&
       isText(p.id) &&
@@ -55,13 +58,14 @@ export function parseBank(data: unknown): { bank: Bank; skipped: string[] } {
       Number.isFinite(p.answer) &&
       !!p.solution &&
       isLines(p.solution.ko) &&
-      isLines(p.solution.en);
+      isLines(p.solution.en) &&
+      (p.source === undefined || (typeof p.source === 'string' && /^\d{8}$/.test(p.source)));
     if (!ok) {
       skipped.push(id);
       return;
     }
     seen.add(p.id!);
-    problems.push({ id: p.id!, unit: p.unit!, level, points: p.points!, prompt: p.prompt!, answer: p.answer!, solution: p.solution! });
+    problems.push({ id: p.id!, unit: p.unit!, level, points: p.points!, prompt: p.prompt!, answer: p.answer!, solution: p.solution!, ...(p.source ? { source: p.source } : {}) });
   });
   const title = isPair(d.title) ? d.title : { ko: '문제집', en: 'Problem set' };
   return { bank: { title, problems }, skipped };
@@ -86,6 +90,7 @@ export function loadBank(bank: Bank | null): void {
         points: p.points,
         prompt: p.prompt,
         solution: p.solution,
+        ...(p.source ? { source: p.source } : {}),
       }),
     };
     const list = LEVEL_TEMPLATES[p.level][p.unit] ?? [];

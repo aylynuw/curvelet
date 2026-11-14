@@ -3,17 +3,18 @@ import { add, call, div, id, mul, num, pow, tidy } from './ast';
 import { diffSteps } from './derivative';
 import { EXAM_TEMPLATES as BASE_EXAM, type Unit } from './exam';
 import { MORE_EXAM } from './exam2';
+import { FOUR_POINT } from './exam4';
 import { ADVANCED_UNITS, BASIC_UNITS, GEOMETRY_EXAM } from './units';
 
-const EXAM_TEMPLATES = { ...BASE_EXAM, ...MORE_EXAM, ...GEOMETRY_EXAM };
+const EXAM_TEMPLATES = { ...BASE_EXAM, ...MORE_EXAM, ...GEOMETRY_EXAM, ...FOUR_POINT };
 /** every short-answer template: the exam ones and the basic and advanced ones by unit */
 const UNIT_TEMPLATES = { ...EXAM_TEMPLATES, ...BASIC_UNITS, ...ADVANCED_UNITS };
 import { solveSteps } from './equation';
 import { polyNode, Q, toPoly, type Poly } from './rational';
 
-/** derivative, equation and integral drill, and the units: 수학Ⅰ, 수학Ⅱ, 미적분, 확률과 통계, 기하 */
+/** derivative, equation and integral drill, and the units (2022 curriculum names): 대수, 미적분Ⅰ, 미적분Ⅱ, 확률과 통계, 기하 */
 export type Topic = 'derivative' | 'equation' | 'integral' | Unit;
-/** basic drill, harder drill, and exam-style (평가원) problems */
+/** by the 평가원 points: basic is 2-point, advanced 3-point to easy 4-point, exam mostly 4-point */
 export type Level = 'basic' | 'advanced' | 'exam';
 
 /**
@@ -36,6 +37,8 @@ export interface Problem {
   value?: number;
   points?: number;
   solution?: { en: string[]; ko: string[] };
+  /** a 평가원 problem from a problem set: year, month and number, YYYYMMNN */
+  source?: string;
 }
 
 export type Verdict =
@@ -282,21 +285,29 @@ const of = (set: Record<string, { unit: Unit }>, unit: Unit) => Object.entries(s
 const UNITS: Unit[] = ['algebra', 'calculus', 'calc2', 'stats', 'geometry'];
 const byUnit = (set: Record<string, { unit: Unit }>) => Object.fromEntries(UNITS.map((u) => [u, of(set, u)])) as Record<Unit, string[]>;
 
-/** the templates for each level and topic: the units first, then (basic and advanced) the drills */
+const withPoints = (points: number) => Object.fromEntries(Object.entries(EXAM_TEMPLATES).filter(([, t]) => t.points === points));
+/** 4-point problems with one main step, offered at the advanced level too */
+const EASY_FOUR = ['exam-tangent', 'exam-area', 'exam-geo-sum', 'exam-integral-constant', 'exam-geo-projection-area'];
+
+/**
+ * The templates for each level and topic, the units first. Basic is the
+ * 2-point problems, advanced the 3-point ones and a few easy 4-point ones,
+ * exam the 4-point ones; basic and advanced also keep the drills.
+ */
 export const LEVEL_TEMPLATES: Record<Level, Partial<Record<Topic, string[]>>> = {
   basic: {
-    ...byUnit(BASIC_UNITS),
+    ...byUnit({ ...BASIC_UNITS, ...withPoints(2) }),
     derivative: ['derivative-polynomial', 'derivative-product', 'derivative-chain', 'derivative-quotient'],
     equation: ['equation-linear', 'equation-quadratic'],
     integral: ['integral-polynomial', 'integral-basic'],
   },
   advanced: {
-    ...byUnit(ADVANCED_UNITS),
+    ...byUnit({ ...ADVANCED_UNITS, ...withPoints(3), ...Object.fromEntries(EASY_FOUR.map((n) => [n, EXAM_TEMPLATES[n]!])) }),
     derivative: ['derivative-exp-trig', 'derivative-power-of-trig', 'derivative-log-quotient', 'derivative-quotient'],
     equation: ['equation-cubic', 'equation-fraction-roots'],
     integral: ['integral-substitution', 'integral-parts'],
   },
-  exam: byUnit(EXAM_TEMPLATES),
+  exam: byUnit(withPoints(4)),
 };
 /** the basic templates, by topic */
 export const TOPIC_TEMPLATES = LEVEL_TEMPLATES.basic as Record<'derivative' | 'equation' | 'integral', string[]>;
@@ -445,7 +456,7 @@ export interface ExamItem extends Problem {
 
 /**
  * A full paper laid out like the 수능 mathematics section: 22 common
- * problems (수학Ⅰ and 수학Ⅱ: 1–15 five-choice, 16–22 short answer) and 8 on
+ * problems (대수 and 미적분Ⅰ: 1–15 five-choice, 16–22 short answer) and 8 on
  * the elective (23–28 five-choice, 29–30 short answer), 100 points in all,
  * easiest first in each part. Short answers are natural numbers below 1000.
  */

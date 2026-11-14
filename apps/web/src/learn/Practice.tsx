@@ -10,6 +10,7 @@ import { LatexText, MathText } from '../components/MathText';
 import { textToLatex } from '../math/latex';
 import type { MathfieldElement } from '../math/mathlive';
 import { markSeen, recentOf } from './recent';
+import { sourceText } from './source';
 import { StepsView, type IntegralAsk } from './StepsView';
 import type { LearnStrings } from './strings';
 
@@ -143,6 +144,7 @@ export function Practice({
         <h3 id="practice-task" className="practice__task">
           {s.task[problem.topic]}
           {exam && problem.points ? <span className="practice__points"> {lang === 'ko' ? `[${problem.points}점]` : `(${problem.points} points)`}</span> : null}
+          {problem.source && <span className="practice__source"> {sourceText(problem.source, lang)}</span>}
         </h3>
         {exam ? (
           <p className="practice__prompt" key={`p${problem.seed}`}>

@@ -21,7 +21,9 @@ describe('problem sets', () => {
     const { bank } = parseBank(file);
     const before = LEVEL_TEMPLATES.exam.geometry!.length;
     loadBank(bank);
-    expect(LEVEL_TEMPLATES.exam.geometry!.length).toBe(before + bank.problems.filter((p) => p.unit === 'geometry').length);
+    // placed by points: 4-point problems at the exam level
+    expect(LEVEL_TEMPLATES.exam.geometry!.length).toBe(before + bank.problems.filter((p) => p.unit === 'geometry' && p.points === 4).length);
+    expect(bank.problems.find((p) => p.id === 'g03')!.level).toBe('advanced');
     const p = makeProblem('bank-g02', 1);
     expect(p.value).toBe(16);
     expect(checkAnswer(p, '16')).toEqual({ correct: true });
@@ -33,6 +35,15 @@ describe('problem sets', () => {
     loadBank(null);
     expect(LEVEL_TEMPLATES.exam.geometry!.length).toBe(before);
     expect(Object.keys(TEMPLATES).some((n) => n.startsWith('bank-'))).toBe(false);
+  });
+
+  it('keeps a 평가원 source code (YYYYMMNN) and skips a malformed one', () => {
+    const one = { ...file.problems[0]!, source: '20261103' };
+    const { bank, skipped } = parseBank({ format: 'curvelet-problems', problems: [one, { ...file.problems[1]!, source: '2026-11' }] });
+    expect(bank.problems[0]!.source).toBe('20261103');
+    expect(skipped).toEqual([file.problems[1]!.id]);
+    loadBank(bank);
+    expect(makeProblem(`bank-${one.id}`, 1).source).toBe('20261103');
   });
 
   it('skips problems that do not fit, and refuses files that are not sets', () => {

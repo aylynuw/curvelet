@@ -100,7 +100,7 @@ const en = {
   },
 
   practice: 'Practice',
-  topics: { derivative: 'Derivatives', equation: 'Equations', integral: 'Integrals', algebra: '수학Ⅰ', calculus: '수학Ⅱ', calc2: '미적분', stats: 'Probability (확률과 통계)', geometry: 'Geometry (기하)' },
+  topics: { derivative: 'Derivatives', equation: 'Equations', integral: 'Integrals', algebra: 'Algebra', calculus: 'Calculus I', calc2: 'Calculus II', stats: 'Probability and Statistics', geometry: 'Geometry' },
   task: { derivative: 'Find the derivative.', equation: 'Solve for x.', integral: 'Find the integral.', algebra: 'Short answer.', calculus: 'Short answer.', calc2: 'Short answer.', stats: 'Short answer.', geometry: 'Short answer.' },
   levels: { basic: 'Basic', advanced: 'Advanced', exam: 'Exam (평가원)' },
   level: 'Level',
@@ -242,7 +242,7 @@ const ko: LearnStrings = {
   },
 
   practice: '연습',
-  topics: { derivative: '미분', equation: '방정식', integral: '적분', algebra: '수학Ⅰ', calculus: '수학Ⅱ', calc2: '미적분', stats: '확률과 통계', geometry: '기하' },
+  topics: { derivative: '미분', equation: '방정식', integral: '적분', algebra: '대수', calculus: '미적분Ⅰ', calc2: '미적분Ⅱ', stats: '확률과 통계', geometry: '기하' },
   task: { derivative: '도함수를 구하세요.', equation: 'x의 값을 구하세요.', integral: '부정적분을 구하세요.', algebra: '단답형', calculus: '단답형', calc2: '단답형', stats: '단답형', geometry: '단답형' },
   levels: { basic: '기본', advanced: '심화', exam: '평가원 스타일' },
   level: '난이도',

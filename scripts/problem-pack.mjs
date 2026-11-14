@@ -17,11 +17,11 @@ const { module: steps } = await runnerImport(join(root, 'packages/steps/src/inde
 const { LEVEL_TEMPLATES, makeProblem, parseBank } = steps;
 
 const UNITS = [
-  ['algebra', '수학Ⅰ', 'Algebra (수학Ⅰ)', '1-수학1'],
-  ['calculus', '수학Ⅱ', 'Calculus (수학Ⅱ)', '2-수학2'],
-  ['calc2', '미적분', 'Calculus II (미적분)', '3-미적분'],
-  ['stats', '확률과 통계', 'Probability and statistics (확률과 통계)', '4-확률과통계'],
-  ['geometry', '기하', 'Geometry (기하)', '5-기하'],
+  ['algebra', '대수', 'Algebra', '1-대수'],
+  ['calculus', '미적분Ⅰ', 'Calculus I', '2-미적분1'],
+  ['calc2', '미적분Ⅱ', 'Calculus II', '3-미적분2'],
+  ['stats', '확률과 통계', 'Probability and Statistics', '4-확률과통계'],
+  ['geometry', '기하', 'Geometry', '5-기하'],
 ];
 const LEVELS = ['basic', 'advanced', 'exam'];
 const hand = JSON.parse(readFileSync(join(root, 'problems/bank.json'), 'utf8'));
