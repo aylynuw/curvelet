@@ -1,6 +1,6 @@
 [package]
 name = "curvelet"
-version = "0.2.3"
+version = "0.2.4"
 description = "Graphing, symbolic math, geometry and worksheets, offline"
 edition = "2021"
 
