@@ -32,7 +32,13 @@ export interface SceneOptions {
   coord?: (n: number) => string;
   /** exam guides changed by hand, by `id:x` / `id:y`: new text, or null to leave the guide out */
   guideText?: Record<string, string | null>;
+  /** exam figures: dashed guides from points to the axes (default true) */
+  pointGuides?: boolean;
 }
+
+const SUBSCRIPT = '₀₁₂₃₄₅₆₇₈₉';
+/** a point's name as printed: F_1 → F₁ */
+export const pointName = (name: string) => name.replace(/_(\d+)$/, (_, d: string) => [...d].map((c) => SUBSCRIPT[Number(c)]).join(''));
 
 const PI_STEPS: [number, number][] = [[1, 12], [1, 6], [1, 4], [1, 2], [1, 1], [2, 1], [4, 1], [8, 1], [16, 1], [32, 1]];
 /** the multiple of π to number the x-axis by: at least `min` units apart */
@@ -334,7 +340,9 @@ export function buildScene(graphables: Graphable[], v: Viewport, opts: SceneOpti
     const py = toPy(v, g.y);
     if (px < -20 || px > v.width + 20 || py < -20 || py > v.height + 20) continue;
     scene.points.push({ id: g.id, x: px, y: py, series: 0 });
-    if (exam) {
+    if (exam && opts.pointGuides === false) {
+      if (g.label) scene.labels.push({ ...away(px, py, 8, pointName(g.label)), text: pointName(g.label), kind: 'point' });
+    } else if (exam) {
       // dashed guides down/across to the axes, with the coordinates written there
       const edits = opts.guideText ?? {};
       const xRef = `${g.id}:x`;
@@ -350,7 +358,7 @@ export function buildScene(graphables: Graphable[], v: Viewport, opts: SceneOpti
         if (text) scene.labels.push({ x: axisX + (g.x >= 0 ? -6 : 6), y: py, text, kind: 'guide', anchor: g.x >= 0 ? 'end' : 'start', baseline: 'middle', ref: yRef });
       }
       // the name last, so it keeps clear of its own numbers on the axes
-      if (g.label) scene.labels.push({ ...away(px, py, 8, g.label), text: g.label, kind: 'point' });
+      if (g.label) scene.labels.push({ ...away(px, py, 8, pointName(g.label)), text: pointName(g.label), kind: 'point' });
     } else if (opts.pointLabels !== false) {
       const c = opts.coord ?? coordinate;
       const text = `${g.label ? `${g.label} ` : ''}(${c(g.x)}, ${c(g.y)})`;

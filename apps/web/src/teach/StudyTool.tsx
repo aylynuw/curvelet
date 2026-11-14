@@ -107,6 +107,7 @@ export function StudyTool({
           resolver={resolver}
           onAnswer={onAnswer}
           calculatorLines={calculatorLines}
+          onNotice={onNotice}
         />
       )}
     </div>

@@ -21,6 +21,8 @@ export interface Figure {
   curveLabels: boolean;
   /** share of the column's width, 0.3 to 1 */
   width: number;
+  /** dashed guides with coordinates from points to the axes (default true) */
+  guides?: boolean;
 }
 
 /**

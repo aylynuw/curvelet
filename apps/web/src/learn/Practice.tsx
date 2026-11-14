@@ -3,7 +3,8 @@ import { printNode } from '@math/engine';
 import { checkAnswer, freshProblem, levelTopics, problemKey, type Level, type Problem, type Topic, type Verdict } from '@math/steps';
 import { useRef, useState } from 'react';
 import type { Lang } from '../i18n';
-import { RichText } from '../teach/FigureView';
+import { FigureView, RichText } from '../teach/FigureView';
+import { sheetFigure } from '../teach/figureFrom';
 import { latexToText } from '../math/latex';
 import { MathInput } from '../components/MathInput';
 import { LatexText, MathText } from '../components/MathText';
@@ -151,6 +152,20 @@ export function Practice({
             <RichText text={problem.prompt![lang]} />
           </p>
         ) : (
+          null
+        )}
+        {exam && problem.figure && (
+          <div className="practice__figure" key={`f${problem.template}${problem.seed}`}>
+            <FigureView
+              figure={sheetFigure(problem.figure)}
+              width={Math.min(460, (typeof window === 'undefined' ? 460 : window.innerWidth) - 72) / 0.8}
+              settings={settings}
+              version={0}
+              label={s.figureLabel}
+            />
+          </div>
+        )}
+        {exam ? null : (
           <p className="practice__question" key={`q${problem.seed}`}>
             <LatexText latex={questionTex(problem)} label={problem.question} />
           </p>

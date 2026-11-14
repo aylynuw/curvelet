@@ -18,6 +18,15 @@ export interface ExamMade {
   value: number;
   /** the working, one line per step, in both languages */
   solution: { en: string[]; ko: string[] };
+  /** a graph or a drawing that goes with the problem */
+  figure?: ProblemFigure;
+}
+
+/** A figure: calculator lines, the part of the plane to show, and whether to draw the axes. */
+export interface ProblemFigure {
+  lines: string[];
+  range: { xmin: number; xmax: number; ymin: number; ymax: number };
+  axes: boolean;
 }
 export interface ExamTemplate {
   unit: Unit;

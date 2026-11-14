@@ -31,6 +31,7 @@ export function figureSvg(fig: Figure, width: number, settings: EvalSettings, re
     curveLabels: fig.curveLabels,
     axes: fig.axes,
     sampleStep: 0.5,
+    pointGuides: fig.guides !== false,
   });
   const out = { svg: sceneToSvg(scene, EXAM_THEME), height };
   if (cache.size > 200) cache.clear();

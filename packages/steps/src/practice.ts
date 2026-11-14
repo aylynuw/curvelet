@@ -1,12 +1,13 @@
 import { compileReal, DEFAULT_SETTINGS, EMPTY_ENV, evaluate, parse, parseExpression, printNode, type Node } from '@math/engine';
 import { add, call, div, id, mul, num, pow, tidy } from './ast';
 import { diffSteps } from './derivative';
-import { EXAM_TEMPLATES as BASE_EXAM, type Unit } from './exam';
+import { EXAM_TEMPLATES as BASE_EXAM, type ProblemFigure, type Unit } from './exam';
 import { MORE_EXAM } from './exam2';
 import { FOUR_POINT } from './exam4';
+import { FIGURE_TEMPLATES } from './figures';
 import { ADVANCED_UNITS, BASIC_UNITS, GEOMETRY_EXAM } from './units';
 
-const EXAM_TEMPLATES = { ...BASE_EXAM, ...MORE_EXAM, ...GEOMETRY_EXAM, ...FOUR_POINT };
+const EXAM_TEMPLATES = { ...BASE_EXAM, ...MORE_EXAM, ...GEOMETRY_EXAM, ...FOUR_POINT, ...FIGURE_TEMPLATES };
 /** every short-answer template: the exam ones and the basic and advanced ones by unit */
 const UNIT_TEMPLATES = { ...EXAM_TEMPLATES, ...BASIC_UNITS, ...ADVANCED_UNITS };
 import { solveSteps } from './equation';
@@ -39,6 +40,8 @@ export interface Problem {
   solution?: { en: string[]; ko: string[] };
   /** a 평가원 problem from a problem set: year, month and number, YYYYMMNN */
   source?: string;
+  /** a graph or a drawing that goes with the problem */
+  figure?: ProblemFigure;
 }
 
 export type Verdict =
@@ -274,7 +277,7 @@ export const TEMPLATES: Record<string, Template> = {
         topic: t.unit,
         make: (r: ReturnType<typeof rng>) => {
           const made = t.make(r);
-          return { target: [], question: made.prompt.en, answer: String(made.value), value: made.value, points: t.points, prompt: made.prompt, solution: made.solution };
+          return { target: [], question: made.prompt.en, answer: String(made.value), value: made.value, points: t.points, prompt: made.prompt, solution: made.solution, ...(made.figure ? { figure: made.figure } : {}) };
         },
       } satisfies Template,
     ]),

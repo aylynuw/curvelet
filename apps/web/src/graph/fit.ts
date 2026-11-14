@@ -45,6 +45,17 @@ export function fitRange(graphables: Graphable[], x0: number, x1: number, y0: nu
           add(r * Math.cos(a), r * Math.sin(a));
         }
       }
+    } else if (g.kind === 'shape') {
+      // drawn shapes: their corners, ends and the box around a circle
+      const s = g.shape;
+      if (s.type === 'circle') {
+        add(s.c.x - s.r, s.c.y - s.r, true);
+        add(s.c.x + s.r, s.c.y + s.r, true);
+      } else if (s.type === 'polygon' || s.type === 'path') for (const p of s.pts) add(p.x, p.y, true);
+      else {
+        add(s.a.x, s.a.y, true);
+        add(s.b.x, s.b.y, true);
+      }
     } else if (g.kind === 'point') add(g.x, g.y, true);
     else if (g.kind === 'scatter') for (const p of g.pts) add(p.x, p.y, true);
   }

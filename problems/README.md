@@ -36,6 +36,7 @@ The problems are new ones written in the style of the CSAT (수능) and its mock
 | `source` | Optional, for a 평가원 problem: year, month and number as `YYYYMMNN`, e.g. `20261103` for problem 3 of the November 2026 exam. Shown next to the points |
 | `points` | 2, 3 or 4 |
 | `prompt`, `solution` | Text with math between `$$…$$` as LaTeX; the solution is one line per step, the same number of lines in both languages |
+| `figure` | Optional: a graph or a drawing, `{ "lines": [...], "range": { "xmin", "xmax", "ymin", "ymax" }, "axes": true }`. The lines are what you would type in the Graph tab (`y = x^2 - 2x`, `let A = (1, 2)`, `polygon(A, B, C)`, `circle((0, 0), 3)`); points are named, not measured, and a name like `F_1` prints as F₁ |
 | `answer` | A number. For a fraction answer, ask for p + q as the other problems do |
 
 A problem that doesn't fit the format is skipped when the set loads, and the app says how many were skipped. `npm test` checks that every problem in this file reads.

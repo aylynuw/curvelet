@@ -3,6 +3,7 @@ import type { Lang } from '../i18n';
 import { questionTex } from '../learn/Practice';
 import type { LearnStrings } from '../learn/strings';
 import { blankProblem, type Problem } from './worksheet';
+import { sheetFigure } from './figureFrom';
 
 /** A practice problem as a worksheet problem: exam ones keep their points and put the working in the answer key. */
 export function toSheetProblem(p: Drill, lang: Lang, learn: LearnStrings): Problem {
@@ -15,6 +16,7 @@ export function toSheetProblem(p: Drill, lang: Lang, learn: LearnStrings): Probl
       points: p.points ?? 0,
       space: (p.points ?? 3) + 3,
       ...(p.source ? { source: p.source } : {}),
+      ...(p.figure ? { figure: sheetFigure(p.figure) } : {}),
     };
   }
   return {
@@ -52,6 +54,7 @@ export function mockSheet(elective: 'calc2' | 'stats' | 'geometry', lang: Lang):
       answer: [at >= 0 ? `${CIRCLED[at]} ${item.value}` : String(item.value), ...working].join('\n'),
       points: item.points ?? 0,
       space: (item.points ?? 3) + 3,
+      ...(item.figure ? { figure: sheetFigure(item.figure) } : {}),
     };
   });
 }

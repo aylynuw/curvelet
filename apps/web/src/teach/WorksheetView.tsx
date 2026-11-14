@@ -9,6 +9,8 @@ import { Pages } from './Pages';
 import type { TeachStrings } from './strings';
 import { generateProblems, mockSheet } from './fromPractice';
 import { FIGURE_TEMPLATES } from './templates';
+import { figureOf, geometryLines } from './figureFrom';
+import { graphView } from '../graph/lastView';
 import { blankProblem, newId, PAPER, PX_PER_MM, type Figure, type Paper, type Problem, type Worksheet } from './worksheet';
 
 /**
@@ -26,6 +28,7 @@ export function WorksheetView({
   resolver,
   onAnswer,
   calculatorLines,
+  onNotice,
 }: {
   sheet: Worksheet;
   onChange: (w: Worksheet) => void;
@@ -35,8 +38,9 @@ export function WorksheetView({
   settings: EvalSettings;
   resolver?: SymbolicResolver;
   onAnswer: (l: () => void) => () => void;
-  /** the calculator's lines, for a figure taken from it */
+  /** the Graph tab's lines, for a figure taken from it */
   calculatorLines: () => string[];
+  onNotice: (text: string) => void;
 }) {
   // SymPy answers (f'(a) in a figure) redraw the figures
   const [version, bump] = useReducer((n: number) => n + 1, 0);
@@ -182,7 +186,7 @@ export function WorksheetView({
                   </div>
                 </div>
                 {open === p.id && (
-                  <ProblemEditor p={p} n={k + 1} s={s} lang={lang} onChange={(patch) => setProblem(k, patch)} calculatorLines={calculatorLines} />
+                  <ProblemEditor p={p} n={k + 1} s={s} lang={lang} onChange={(patch) => setProblem(k, patch)} calculatorLines={calculatorLines} settings={settings} onNotice={onNotice} />
                 )}
               </li>
             ))}
@@ -300,6 +304,8 @@ function ProblemEditor({
   lang,
   onChange,
   calculatorLines,
+  settings,
+  onNotice,
 }: {
   p: Problem;
   n: number;
@@ -307,7 +313,15 @@ function ProblemEditor({
   lang: Lang;
   onChange: (patch: Partial<Problem>) => void;
   calculatorLines: () => string[];
+  settings: EvalSettings;
+  onNotice: (text: string) => void;
 }) {
+  // the Graph tab with its axes; the Geometry board as a drawing, without them
+  const insert = (from: 'graph' | 'geo') => {
+    const fig = from === 'graph' ? figureOf(calculatorLines(), settings, true, graphView()) : figureOf(geometryLines(), settings, false);
+    if (fig) onChange({ figure: fig });
+    else onNotice(from === 'graph' ? s.nothingOnGraph : s.nothingOnGeometry);
+  };
   const figure = p.figure;
   const setFigure = (patch: Partial<Figure>) => onChange({ figure: { ...figure!, ...patch } });
   const fromTemplate = (id: string) => {
@@ -354,14 +368,11 @@ function ProblemEditor({
                 </option>
               ))}
             </select>
-            <button
-              type="button"
-              className="btn btn--small"
-              onClick={() =>
-                onChange({ figure: { lines: calculatorLines(), range: { xmin: -5, xmax: 5, ymin: -4, ymax: 4 }, axes: true, axisNumbers: false, curveLabels: true, width: 0.85 } })
-              }
-            >
+            <button type="button" className="btn btn--small" onClick={() => insert('graph')}>
               {s.fromCalculator}
+            </button>
+            <button type="button" className="btn btn--small" onClick={() => insert('geo')}>
+              {s.fromGeometry}
             </button>
           </div>
         ) : (
@@ -397,6 +408,10 @@ function ProblemEditor({
               <label className="check">
                 <input type="checkbox" checked={figure.curveLabels} onChange={(e) => setFigure({ curveLabels: e.target.checked })} />
                 {s.curveLabels}
+              </label>
+              <label className="check">
+                <input type="checkbox" checked={figure.guides !== false} onChange={(e) => setFigure({ guides: e.target.checked })} />
+                {s.pointGuides}
               </label>
             </div>
             <button type="button" className="btn btn--small btn--quiet" onClick={() => onChange({ figure: null })}>

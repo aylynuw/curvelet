@@ -1,3 +1,4 @@
+import { setGraphView } from './lastView';
 import type { Graphable } from '@math/engine';
 import {
   DEFAULT_VIEW,
@@ -199,6 +200,8 @@ export function GraphPanel({
   };
   const [tool, setTool] = useState<'select' | 'point' | 'pen'>('select');
   const viewport: Viewport = { ...view, ...size };
+  // for a worksheet figure taken from the graph
+  if (size.width > 0 && size.height > 0) setGraphView({ xmin: xmin(viewport), xmax: xmax(viewport), ymin: ymin(viewport), ymax: ymax(viewport) });
   const exam = figure.style === 'exam';
   const view3d = figure.style === '3d';
   const view3dRef = useRef<Graph3DHandle>(null);

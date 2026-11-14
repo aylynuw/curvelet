@@ -19,7 +19,7 @@ describe('practice problems', () => {
   }
 
   it('short-answer problems (exam, and basic and advanced by unit): whole-number answers, 2 to 4 points, and working in both languages', () => {
-    for (const name of Object.keys(TEMPLATES).filter((n) => /^(exam|basic|adv)-/.test(n))) {
+    for (const name of Object.keys(TEMPLATES).filter((n) => /^(exam|basic|adv|fig)-/.test(n))) {
       for (let seed = 1; seed <= 200; seed++) {
         const p = makeProblem(name, seed);
         expect(Number.isInteger(p.value), `${name} ${seed}: ${p.value}`).toBe(true);

@@ -3,7 +3,7 @@
  * problems written by hand, added to the generated ones. A set is checked
  * before use, and loading one replaces the set loaded before.
  */
-import type { Unit } from './exam';
+import type { ProblemFigure, Unit } from './exam';
 import { LEVEL_TEMPLATES, TEMPLATES, type Level, type Problem } from './practice';
 
 export interface BankProblem {
@@ -16,6 +16,8 @@ export interface BankProblem {
   solution: { ko: string[]; en: string[] };
   /** a 평가원 problem: year, month and number, as YYYYMMNN (20261103) */
   source?: string;
+  /** a graph or a drawing: calculator lines, the range to show, axes or not */
+  figure?: ProblemFigure;
 }
 
 export interface Bank {
@@ -30,6 +32,12 @@ const PREFIX = 'bank-';
 const isText = (v: unknown): v is string => typeof v === 'string' && v.trim() !== '';
 const isPair = (v: unknown): v is { ko: string; en: string } => !!v && typeof v === 'object' && isText((v as { ko?: unknown }).ko) && isText((v as { en?: unknown }).en);
 const isLines = (v: unknown): v is string[] => Array.isArray(v) && v.every((x) => typeof x === 'string');
+const isFigure = (v: unknown): v is ProblemFigure => {
+  const f = v as ProblemFigure;
+  const r = f?.range;
+  return !!f && isLines(f.lines) && f.lines.length > 0 && typeof f.axes === 'boolean' && !!r &&
+    [r.xmin, r.xmax, r.ymin, r.ymax].every((n) => typeof n === 'number' && Number.isFinite(n)) && r.xmax > r.xmin && r.ymax > r.ymin;
+};
 
 /**
  * Reads a problem set. Problems that don't fit the format are left out and
@@ -59,13 +67,14 @@ export function parseBank(data: unknown): { bank: Bank; skipped: string[] } {
       !!p.solution &&
       isLines(p.solution.ko) &&
       isLines(p.solution.en) &&
-      (p.source === undefined || (typeof p.source === 'string' && /^\d{8}$/.test(p.source)));
+      (p.source === undefined || (typeof p.source === 'string' && /^\d{8}$/.test(p.source))) &&
+      (p.figure === undefined || isFigure(p.figure));
     if (!ok) {
       skipped.push(id);
       return;
     }
     seen.add(p.id!);
-    problems.push({ id: p.id!, unit: p.unit!, level, points: p.points!, prompt: p.prompt!, answer: p.answer!, solution: p.solution!, ...(p.source ? { source: p.source } : {}) });
+    problems.push({ id: p.id!, unit: p.unit!, level, points: p.points!, prompt: p.prompt!, answer: p.answer!, solution: p.solution!, ...(p.source ? { source: p.source } : {}), ...(p.figure ? { figure: p.figure } : {}) });
   });
   const title = isPair(d.title) ? d.title : { ko: '문제집', en: 'Problem set' };
   return { bank: { title, problems }, skipped };
@@ -91,6 +100,7 @@ export function loadBank(bank: Bank | null): void {
         prompt: p.prompt,
         solution: p.solution,
         ...(p.source ? { source: p.source } : {}),
+        ...(p.figure ? { figure: p.figure } : {}),
       }),
     };
     const list = LEVEL_TEMPLATES[p.level][p.unit] ?? [];
