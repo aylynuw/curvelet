@@ -53,7 +53,8 @@ for (const [unit, ko, en, file] of UNITS) {
   // the app reads it back whole
   const { bank, skipped } = parseBank(set);
   if (skipped.length || bank.problems.length !== problems.length) throw new Error(`${unit}: ${skipped.length} problems do not read`);
-  const byLevel = Object.fromEntries(LEVELS.map((l) => [l, problems.filter((p) => p.level === l).length]));
+  const levelOf = (p) => p.level ?? (p.points === 2 ? 'basic' : p.points === 3 ? 'advanced' : 'exam');
+  const byLevel = Object.fromEntries(LEVELS.map((l) => [l, problems.filter((p) => levelOf(p) === l).length]));
   summary.push(`${ko}: ${problems.length} (기본 ${byLevel.basic}, 심화 ${byLevel.advanced}, 평가원 ${byLevel.exam})`);
   files.push({ name: `curvelet-problems/${file}.json`, data: Buffer.from(JSON.stringify(set, null, 2) + '\n') });
 }
