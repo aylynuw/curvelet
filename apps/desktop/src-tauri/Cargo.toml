@@ -16,7 +16,7 @@ tauri = { version = "2", features = [] }
 # the native Save dialog for exports and project files
 tauri-plugin-dialog = "2"
 base64 = "0.22"
-# updates: signed releases listed in the public curvelet-releases repository
+# updates: signed releases listed on this repository's releases page
 tauri-plugin-updater = "2"
 serde = { version = "1", features = ["derive"] }
 # generate_context! writes the plugins' settings with it

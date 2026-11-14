@@ -4,7 +4,7 @@ A graphing calculator, symbolic calculator and geometry board that works offline
 
 ![Curvelet's graph view](docs/portfolio/app-graph.png)
 
-**Download:** installers for macOS, Windows and Linux are on the [releases page](https://github.com/aylynuw/curvelet-releases/releases). The desktop app updates itself from version 0.2.0 on. The macOS and Windows builds aren't code-signed yet, so the first launch shows a warning.
+**Download:** installers for macOS, Windows and Linux are on the [releases page](https://github.com/aylynuw/curvelet/releases). The desktop app updates itself; if you have 0.2.0, install the next version by hand once. The macOS and Windows builds aren't code-signed yet, so the first launch shows a warning.
 
 ## What it does
 
@@ -71,6 +71,6 @@ The name "Curvelet" and its logo are mine and aren't covered by that license. If
 
 ## 한국어 요약
 
-Curvelet은 인터넷 없이 쓰는 그래프 계산기, 기호 계산기, 기하 도구입니다. 설치 파일은 [릴리스 페이지](https://github.com/aylynuw/curvelet-releases/releases)에 있고, 0.2.0부터 데스크톱 앱이 스스로 업데이트합니다.
+Curvelet은 인터넷 없이 쓰는 그래프 계산기, 기호 계산기, 기하 도구입니다. 설치 파일은 [릴리스 페이지](https://github.com/aylynuw/curvelet/releases)에 있고, 데스크톱 앱은 스스로 업데이트합니다(0.2.0을 쓰고 있다면 다음 버전만 한 번 직접 설치해 주세요).
 
 코드는 Claude Code가 작성했고, 기능 범위와 디자인 방향을 정하고 앱에서 직접 써 보며 검증한 것은 제가 했습니다. 코드는 MIT 라이선스로 누구나 쓸 수 있지만, "Curvelet"이라는 이름과 로고는 제 것이라 라이선스에 포함되지 않습니다.

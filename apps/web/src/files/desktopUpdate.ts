@@ -1,7 +1,7 @@
 /**
  * Updates for the desktop app. The app asks its native side whether a newer
- * signed release is out (the list lives in the public curvelet-releases
- * repository); the user chooses when to install it, then the app restarts.
+ * signed release is out (the list is latest.json on this repository's
+ * releases page); the user chooses when to install it, then the app restarts.
  * In a browser there is nothing to do: the service worker updates the web app.
  */
 interface TauriInternals {
